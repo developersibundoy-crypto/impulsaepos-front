@@ -155,7 +155,22 @@ function IngresoProductos() {
       permitir_venta_negativa: formData.permitir_venta_negativa
     };
 
-    setProductosIngresados([nuevoProducto, ...productosIngresados]);
+    const existingIndex = productosIngresados.findIndex(p => 
+      (p.referencia && p.referencia === nuevoProducto.referencia) || 
+      (!p.referencia && p.nombre === nuevoProducto.nombre)
+    );
+
+    if (existingIndex !== -1) {
+      const updatedList = [...productosIngresados];
+      updatedList[existingIndex] = {
+        ...updatedList[existingIndex],
+        cantidad: updatedList[existingIndex].cantidad + nuevoProducto.cantidad,
+      };
+      setProductosIngresados(updatedList);
+    } else {
+      setProductosIngresados([nuevoProducto, ...productosIngresados]);
+    }
+
     setFormData({
       referencia: "",
       nombre: "",
@@ -588,26 +603,44 @@ function IngresoProductos() {
             ) : (
                 <div className="space-y-2.5">
                   {productosIngresados.map((p, index) => (
-                      <div key={index} className="bg-white p-3.5 rounded-[1.5rem] border border-slate-200 hover:border-indigo-300 transition-all relative group/item">
-                          <div className="flex justify-between items-center gap-3">
-                              <div className="flex-1 min-w-0">
-                                  <h4 className="text-[10px] font-medium text-slate-800 uppercase tracking-tight leading-none mb-1 truncate group-hover/item:text-indigo-600 transition-colors">{p.nombre}</h4>
-                                  <div className="flex items-center gap-2">
-                                      <span className="text-[7px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-widest border border-indigo-100">{p.categoria}</span>
-                                      {p.referencia && <span className="text-[8px] font-medium text-slate-400 uppercase tracking-tighter">SKU: {p.referencia}</span>}
-                                  </div>
+                      <div key={index} className="bg-white p-5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-2xl hover:shadow-indigo-100/50 transition-all relative group/item animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${index * 50}ms` }}>
+                          <div className="flex flex-col gap-4">
+                              {/* Header: Name and Remove Action */}
+                              <div className="flex justify-between items-start gap-4 ">
+                                  <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-tight leading-tight flex-1 group-hover/item:text-indigo-600 transition-colors">
+                                      {p.nombre}
+                                  </h4>
+                                  <button 
+                                    onClick={() => removeItem(index)} 
+                                    className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all flex items-center justify-center text-lg font-black border border-transparent hover:border-rose-100 shadow-sm shrink-0 -mt-2"
+                                    title="Eliminar de la lista"
+                                  >
+                                    &times;
+                                  </button>
                               </div>
-                              <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block leading-none mb-1">Total</span>
-                                    <span className="text-[11px] font-black text-indigo-600 leading-none">{formatCOP(p.precio_venta)}</span>
-                                </div>
-                                <button 
-                                  onClick={() => removeItem(index)} 
-                                  className="w-6 h-6 rounded-lg bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all flex items-center justify-center text-xs font-black"
-                                >
-                                  &times;
-                                </button>
+
+                              {/* Footer: Metadata and Total */}
+                              <div className="flex items-end justify-between gap-4 border-t border-slate-50">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                      <span className="bg-indigo-600 text-white text-[8px] font-black px-2.5 py-1.5 rounded-xl shadow-lg shadow-indigo-100 uppercase tracking-widest">
+                                          CANTIDAD: {p.cantidad}
+                                      </span>
+                                      <span className="text-[7px] font-black text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-full uppercase tracking-widest border border-indigo-100/50">
+                                          {p.categoria}
+                                      </span>
+                                      {p.referencia && (
+                                        <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter font-mono bg-slate-50/50 px-1.5 py-1 rounded border border-slate-100/50">
+                                          SKU: {p.referencia}
+                                      </span>
+                                      )}
+                                  </div>
+                                  
+                                  <div className="text-right">
+                                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-0.5">Inversión Lote</span>
+                                      <span className="text-sm font-black text-indigo-700 leading-none block font-mono">
+                                          {formatCOP(p.precio_venta * p.cantidad)}
+                                      </span>
+                                  </div>
                               </div>
                           </div>
                       </div>

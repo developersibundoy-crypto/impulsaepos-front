@@ -418,7 +418,7 @@ function Productos() {
                           <span className="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded-md font-medium animate-pulse">AGOTADO</span>
                         )}
                       </div>
-                      {p.referencia && <p className="text-[9px] text-slate-400 mt-0.5 tracking-tighter font-mono">{p.referencia}</p>}
+                      {p.referencia && <p className="text-[9px] text-slate-950 mt-0.5 tracking-tighter font-mono">{p.referencia}</p>}
                     </div>
                     <div className="mt-auto space-y-1.5">
                       <div className="text-base text-indigo-600 font-medium leading-none">{formatCOP(p.precio_venta)}</div>
@@ -428,7 +428,7 @@ function Productos() {
                         {p.es_servicio ? (
                           <span className="flex items-center gap-1">⚡ SERVICIO</span>
                         ) : (
-                          <span>📦 DSIP: {Math.max(0, available)}</span>
+                          <span>📦 DISP: {Math.max(0, available)}</span>
                         )}
                       </div>
                     </div>

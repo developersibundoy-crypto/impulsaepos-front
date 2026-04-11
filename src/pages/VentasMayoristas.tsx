@@ -376,14 +376,14 @@ function VentasMayoristas() {
                           <span className="text-[8px] bg-sky-600 text-white px-1.5 py-0.5 rounded-md font-medium animate-pulse">AGOTADO</span>
                         )}
                       </div>
-                      {p.referencia && <p className="text-[9px] text-slate-400 mt-1 tracking-tighter font-mono">{p.referencia}</p>}
+                      {p.referencia && <p className="text-[9px] text-slate-950 mt-1 tracking-tighter font-mono">{p.referencia}</p>}
                     </div>
                     <div className="mt-auto space-y-1.5">
                       <div className="text-base text-sky-600 font-medium leading-none">{formatCOP(p.precio_venta)}</div>
                       <div className={`text-[9px] px-2 py-1 rounded-lg w-fit font-medium border ${available <= 0 && !p.es_servicio ? 'bg-red-50 text-red-500 border-red-100' :
-                          available < 5 && !p.es_servicio ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'
+                        available < 5 && !p.es_servicio ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-500 border-slate-100'
                         }`}>
-                        {p.es_servicio ? '⚡ SERVICIO' : `🚛 DSIP: ${Math.max(0, available)}`}
+                        {p.es_servicio ? '⚡ SERVICIO' : `🚛 DISP: ${Math.max(0, available)}`}
                       </div>
                     </div>
 
@@ -430,8 +430,8 @@ function VentasMayoristas() {
                 key={tab.id}
                 onClick={() => setActiveTabId(tab.id)}
                 className={`relative px-3 py-1 rounded-lg text-[10px] font-black whitespace-nowrap cursor-pointer transition-all border flex items-center gap-1.5 ${activeTabId === tab.id
-                    ? "bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-100"
-                    : "bg-white text-slate-400 border-slate-200 hover:bg-slate-50"
+                  ? "bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-100"
+                  : "bg-white text-slate-400 border-slate-200 hover:bg-slate-50"
                   }`}
               >
                 LOTE {idx + 1}
@@ -614,8 +614,8 @@ function VentasMayoristas() {
                   setShowCheckout(true);
                 }}
                 className={`w-full py-4 rounded-xl shadow-xl transition-all duration-500 flex items-center justify-center gap-3 text-xs uppercase tracking-[0.2em] ${!cajeroId
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300 shadow-none'
-                    : 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-sky-100 hover:shadow-sky-300 hover:-translate-y-1 active:scale-95'
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300 shadow-none'
+                  : 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-sky-100 hover:shadow-sky-300 hover:-translate-y-1 active:scale-95'
                   }`}
               >
                 {cajeroId ? `FINALIZAR DESPACHO ${formatCOP(granTotal)}` : 'SELECCIONAR RESPONSABLE'}
