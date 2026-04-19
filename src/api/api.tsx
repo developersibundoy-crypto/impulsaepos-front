@@ -2,7 +2,7 @@ import axios from "axios";
 
 const API = axios.create({
   // baseURL: import.meta.env.VITE_API_URL || "http://localhost:4000"
-  baseURL: "https://redcograf-back.onrender.com"
+  // baseURL: "https://redcograf-back.onrender.com"
 });
 
 // Interceptor para inyectar Token y Tenant ID automáticamente a todas las llamadas
