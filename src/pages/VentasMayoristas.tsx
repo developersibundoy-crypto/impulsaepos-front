@@ -118,6 +118,10 @@ function VentasMayoristas() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
+  // Scanner Optimization Refs
+  const lastKeystrokeTime = useRef(0);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Tab Handlers
   const nuevaTab = () => {
     const newId = Math.max(...tabs.map((t: any) => t.id), 0) + 1;
@@ -168,7 +172,7 @@ function VentasMayoristas() {
 
     API.get("/clientes").then(res => setClientes(res.data)).catch(console.error);
     API.get("/empresa").then(res => setEmpresa(res.data)).catch(console.error);
-    
+
     // Initial inventory fetch
     fetchInventory(1);
   }, []); // Solo al montar
@@ -176,9 +180,9 @@ function VentasMayoristas() {
   // 2. Sincronización en Tiempo Real (Sockets) - Profesional
   useEffect(() => {
     if (!empresa?.id) return;
-    
+
     joinEmpresaRoom(empresa.id);
-    
+
     const handleProductUpdate = (updatedProd: any) => {
       setProductos(prev => prev.map(p => p.id === updatedProd.id ? { ...p, ...updatedProd } : p));
     };
@@ -193,12 +197,25 @@ function VentasMayoristas() {
     };
   }, [empresa?.id, fetchInventory]);
 
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchInventory(1, search);
-    }, 300);
-    return () => clearTimeout(delayDebounceFn);
-  }, [search, fetchInventory]);
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    
+    const now = Date.now();
+    const isFast = now - lastKeystrokeTime.current < 50;
+    lastKeystrokeTime.current = now;
+
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+
+    if (isFast && val.length > 2) {
+      scanTimeoutRef.current = setTimeout(() => {
+        handleSearchKeyPress({ key: 'Enter', preventDefault: () => {}, stopPropagation: () => {} } as any);
+      }, 150);
+    } else {
+      scanTimeoutRef.current = setTimeout(() => {
+        fetchInventory(1, val);
+      }, 300);
+    }
+  };
 
   // --- Sincronización de Precios Mayoristas ---
   useEffect(() => {
@@ -306,21 +323,37 @@ function VentasMayoristas() {
     if (window.confirm("¿Seguro que deseas anular este despacho?")) setCarrito([]);
   };
 
-  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+  const handleSearchKeyPress = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       if (search.trim() !== '') {
         e.preventDefault();
-        e.stopPropagation(); // Evitar que el listener global abra el checkout al escanear
+        e.stopPropagation(); 
+        const barcode = search.trim();
+        
+        // 1. Intentar buscar localmente
         const matchedProduct = productos.find(p =>
-          p.referencia && p.referencia.trim().toLowerCase() === search.trim().toLowerCase()
+          p.referencia && p.referencia.trim().toLowerCase() === barcode.toLowerCase()
         );
 
         if (matchedProduct) {
           agregarAlCarrito(matchedProduct);
           setSearch("");
+          if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
         } else {
-          setScanError(true);
-          setTimeout(() => setScanError(false), 800);
+          // 2. Buscar en el servidor por referencia exacta
+          try {
+            const res = await API.get(`/productos/buscar/${encodeURIComponent(barcode)}`);
+            if (res.data && res.data.id) {
+              agregarAlCarrito(res.data);
+              setSearch("");
+              if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+            } else {
+              throw new Error("No encontrado");
+            }
+          } catch (err) {
+            setScanError(true);
+            setTimeout(() => setScanError(false), 800);
+          }
         }
       }
     }
@@ -641,7 +674,7 @@ function VentasMayoristas() {
               type="text"
               placeholder="Escanea SKU o localiza mercancía por nombre..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={handleSearchKeyPress}
               className={`w-full pl-16 pr-8 py-5 bg-white border rounded-[28px] outline-none transition-all duration-300 font-medium text-sm shadow-sm ${scanError ? 'border-red-500 ring-6 ring-red-50 bg-red-50 shadow-inner' : 'border-slate-200 focus:border-sky-500 focus:ring-8 focus:ring-sky-100/50'}`}
               autoFocus
@@ -778,11 +811,11 @@ function VentasMayoristas() {
               {(() => {
                 const isExactMatch = clientes.some(c => `${c.nombre} ${c.documento ? `(${c.documento})` : ''}` === clienteSearch);
                 const filtered = clienteSearch && !isExactMatch
-                  ? clientes.filter(c => 
-                      c.id !== 1 && 
-                      (c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) || 
-                       (c.documento && c.documento.includes(clienteSearch)))
-                    )
+                  ? clientes.filter(c =>
+                    c.id !== 1 &&
+                    (c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) ||
+                      (c.documento && c.documento.includes(clienteSearch)))
+                  )
                   : [];
 
                 if (filtered.length === 0) return null;
@@ -790,12 +823,12 @@ function VentasMayoristas() {
                 return (
                   <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-100 rounded-[20px] shadow-2xl max-h-64 overflow-y-auto p-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
                     {filtered.map(c => (
-                      <div 
-                        key={c.id} 
-                        onClick={() => { 
-                          setClienteSearch(`${c.nombre} ${c.documento ? `(${c.documento})` : ''}`); 
-                          setClienteId(c.id.toString()); 
-                        }} 
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setClienteSearch(`${c.nombre} ${c.documento ? `(${c.documento})` : ''}`);
+                          setClienteId(c.id.toString());
+                        }}
                         className="p-2.5 hover:bg-indigo-50 cursor-pointer rounded-xl text-[10px] font-medium text-slate-700 uppercase border-b border-slate-50 last:border-0 flex justify-between items-center group transition-colors"
                       >
                         <span className="group-hover:text-indigo-600 truncate">{c.nombre}</span>
@@ -1477,8 +1510,8 @@ function VentasMayoristas() {
                 }}
                 disabled={isProcessingSeparado || !clienteId || clienteId === "1" || carrito.length === 0}
                 className={`w-full py-5 rounded-[24px] font-medium text-xs uppercase tracking-[0.5em] transition-all shadow-2xl 
-                  ${isProcessingSeparado 
-                    ? 'bg-slate-200 text-slate-400' 
+                  ${isProcessingSeparado
+                    ? 'bg-slate-200 text-slate-400'
                     : 'bg-emerald-600 text-white hover:bg-emerald-700 hover:scale-[1.02] shadow-emerald-200/50'
                   } 
                   ${(!clienteId || clienteId === "1" || carrito.length === 0) ? 'brightness-90 saturate-50 cursor-not-allowed' : ''}`}

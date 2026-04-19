@@ -132,6 +132,10 @@ function Productos() {
   const [showSeparadosHistoryModal, setShowSeparadosHistoryModal] = useState(false);
 
 
+  // Scanner Optimization Refs
+  const lastKeystrokeTime = useRef(0);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Tab Handlers
   const nuevaTab = () => {
     const newId = Math.max(...tabs.map((t: any) => t.id), 0) + 1;
@@ -309,7 +313,22 @@ function Productos() {
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
-    fetchInventory(1, val);
+    
+    const now = Date.now();
+    const isFast = now - lastKeystrokeTime.current < 50;
+    lastKeystrokeTime.current = now;
+
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+
+    if (isFast && val.length > 2) {
+      scanTimeoutRef.current = setTimeout(() => {
+        handleSearchKeyPress({ key: 'Enter', preventDefault: () => {} } as any);
+      }, 150); 
+    } else {
+      scanTimeoutRef.current = setTimeout(() => {
+        fetchInventory(1, val);
+      }, 300);
+    }
   };
 
   // --- Sincronización de Precios en Tiempo Real ---
@@ -439,23 +458,38 @@ function Productos() {
     if (window.confirm("¿Seguro que deseas vaciar el carrito actual?")) setCarrito([]);
   };
 
-  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+  const handleSearchKeyPress = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       if (search.trim() !== '') {
         e.preventDefault();
+        const barcode = search.trim();
+        
+        // 1. Búsqueda local
         const matchedProduct = productos.find(p =>
-          p.referencia && p.referencia.trim().toLowerCase() === search.trim().toLowerCase()
+          p.referencia && p.referencia.trim().toLowerCase() === barcode.toLowerCase()
         );
 
         if (matchedProduct) {
           agregarAlCarrito(matchedProduct);
           setSearch("");
+          if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
         } else {
-          setScanError(true);
-          setTimeout(() => setScanError(false), 800);
+          // 2. Búsqueda remota
+          try {
+            const res = await API.get(`/productos/buscar/${encodeURIComponent(barcode)}`);
+            if (res.data && res.data.id) {
+              agregarAlCarrito(res.data);
+              setSearch("");
+              if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+            } else {
+              throw new Error("No encontrado");
+            }
+          } catch (err) {
+            setScanError(true);
+            setTimeout(() => setScanError(false), 800);
+          }
         }
       } else if (carrito.length > 0 && !showCheckoutModal && !ventaExitosa) {
-        // Trigger Checkout if search is empty and Enter is pressed
         if (!cajeroId) return alert("⚠️ Identificación Requerida: Seleccione al vendedor responsable.");
         setShowCheckoutModal(true);
       }
@@ -656,7 +690,7 @@ function Productos() {
 
                 <div className="w-px h-6 bg-slate-100 mx-1"></div>
                 <div className="relative group/sep">
-                  <button 
+                  <button
                     onClick={() => {
                       if (!hasAccess("separados")) {
                         alert("🚫 No tienes permiso para acceder al módulo de separados.");
@@ -865,8 +899,8 @@ function Productos() {
               {clienteSearch !== "" && clienteSearch !== "Cliente general" && !clienteSearch.includes("(") && (
                 <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 z-[210] max-h-48 overflow-y-auto overflow-x-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                   {clientes
-                    .filter(c => 
-                      c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) || 
+                    .filter(c =>
+                      c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) ||
                       c.documento?.includes(clienteSearch)
                     )
                     .slice(0, 5)
@@ -995,7 +1029,7 @@ function Productos() {
                     return alert("🚫 No tienes permiso para realizar ventas.");
                   }
                   if (!cajeroId) return alert("⚠️ Identificación Requerida: Seleccione al vendedor responsable.");
-                  
+
                   // Validación previa de stock antes de abrir checkout
                   const hasStockError = carrito.some((item: any) => {
                     if (item.es_servicio) return false;
@@ -1200,10 +1234,10 @@ function Productos() {
                   onClick={() => confirmarVenta()}
                   disabled={isProcessing || (metodoPago === "Mixto" && sumMixto < granTotal) || (metodoPago === "Efectivo" && (pagoCliente === "" || cashPaga < granTotal)) || (metodoPago === "Tarjeta" && (pagoTarjeta === "" || parseCurrency(pagoTarjeta) < granTotal))}
                   className={`w-full py-3 rounded-2xl font-semibold text-sm uppercase tracking-wider shadow-xl transition-all duration-300 flex items-center justify-center gap-3 ${isProcessing
-                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      : ((metodoPago === "Mixto" && sumMixto >= granTotal) || (metodoPago === "Efectivo" && cashPaga >= granTotal) || (metodoPago === "Tarjeta" && parseCurrency(pagoTarjeta) >= granTotal))
-                        ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 text-white hover:shadow-2xl hover:shadow-blue-300 hover:-translate-y-0.5 active:translate-y-0 active:shadow-lg'
-                        : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    : ((metodoPago === "Mixto" && sumMixto >= granTotal) || (metodoPago === "Efectivo" && cashPaga >= granTotal) || (metodoPago === "Tarjeta" && parseCurrency(pagoTarjeta) >= granTotal))
+                      ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 text-white hover:shadow-2xl hover:shadow-blue-300 hover:-translate-y-0.5 active:translate-y-0 active:shadow-lg'
+                      : 'bg-slate-100 text-slate-300 cursor-not-allowed'
                     }`}
                 >
                   {isProcessing ? (

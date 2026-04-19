@@ -12,6 +12,7 @@ function FacturacionElectronica() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [scanError, setScanError] = useState(false);
 
   // Tabs / In-waiting factoras
   const [tabs, setTabs] = useState<any>(() => {
@@ -65,6 +66,10 @@ function FacturacionElectronica() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+
+  // Scanner Optimization Refs
+  const lastKeystrokeTime = useRef(0);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Receipt Print State
   const [ventaExitosa, setVentaExitosa] = useState(false);
@@ -136,12 +141,25 @@ function FacturacionElectronica() {
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      fetchInventory(1, search);
-    }, 300);
-    return () => clearTimeout(delayDebounceFn);
-  }, [search]);
+  const handleSearchChange = (val: string) => {
+    setSearch(val);
+    
+    const now = Date.now();
+    const isFast = now - lastKeystrokeTime.current < 50;
+    lastKeystrokeTime.current = now;
+
+    if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+
+    if (isFast && val.length > 2) {
+      scanTimeoutRef.current = setTimeout(() => {
+        handleSearchKeyPress({ key: 'Enter', preventDefault: () => {} } as any);
+      }, 150);
+    } else {
+      scanTimeoutRef.current = setTimeout(() => {
+        fetchInventory(1, val);
+      }, 300);
+    }
+  };
 
   const agregarAlCarrito = (producto: any) => {
     const exist = carrito.find((x: any) => x.id === producto.id);
@@ -175,12 +193,39 @@ function FacturacionElectronica() {
     setCarrito(carrito.filter((x: any) => x.id !== producto.id));
   };
 
-  const handleSearchKeyPress = (e: React.KeyboardEvent) => {
+  const handleSearchKeyPress = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      if (search.trim() === '') {
-        if (carrito.length > 0 && !showCheckout) {
-          abrirCheckout();
+      if (search.trim() !== '') {
+        e.preventDefault();
+        const barcode = search.trim();
+        
+        // 1. Búsqueda local
+        const matchedProduct = productos.find(p =>
+          p.referencia && p.referencia.trim().toLowerCase() === barcode.toLowerCase()
+        );
+
+        if (matchedProduct) {
+          agregarAlCarrito(matchedProduct);
+          setSearch("");
+          if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+        } else {
+          // 2. Búsqueda remota
+          try {
+            const res = await API.get(`/productos/buscar/${encodeURIComponent(barcode)}`);
+            if (res.data && res.data.id) {
+              agregarAlCarrito(res.data);
+              setSearch("");
+              if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current);
+            } else {
+              throw new Error("No encontrado");
+            }
+          } catch (err) {
+            setScanError(true);
+            setTimeout(() => setScanError(false), 800);
+          }
         }
+      } else if (carrito.length > 0 && !showCheckout) {
+        abrirCheckout();
       }
     }
   };
@@ -380,9 +425,9 @@ function FacturacionElectronica() {
               type="text"
               placeholder="Escribe el nombre del producto o escanea código..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); fetchInventory(1, e.target.value); }}
+              onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={handleSearchKeyPress}
-              className="w-full pl-16 pr-6 py-5 bg-white border border-slate-200 rounded-3xl outline-none transition-all duration-300 font-semibold text-slate-700 focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5 placeholder:text-slate-300"
+              className={`w-full pl-16 pr-6 py-5 bg-white border rounded-3xl outline-none transition-all duration-300 font-semibold text-slate-700 placeholder:text-slate-300 ${scanError ? 'border-red-500 ring-4 ring-red-50 bg-red-50 shadow-inner' : 'border-slate-200 focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5'}`}
             />
           </div>
         </div>
@@ -401,7 +446,7 @@ function FacturacionElectronica() {
                   className="group flex flex-col p-5 bg-white border border-blue-100 rounded-[32px] text-left transition-all duration-300 hover:bg-blue-50/50 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-100/50 active:scale-95 relative overflow-hidden"
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700"></div>
-                  
+
                   <h3 className="text-xs font-bold text-slate-700 uppercase line-clamp-2 min-h-[2.5rem] tracking-tight group-hover:text-blue-700 transition-colors relative z-10">{p.nombre}</h3>
                   <div className="mt-auto space-y-3 pt-4 relative z-10">
                     <span className="text-2xl font-black text-blue-600 italic tracking-tighter block drop-shadow-sm">{formatCOP(p.precio_venta)}</span>
