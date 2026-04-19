@@ -10,7 +10,14 @@ function ConfiguracionEmpresa() {
     correo: "",
     resolucion: "",
     representante_legal: "",
-    logo: null as string | null
+    logo: null as string | null,
+    tipo_persona: "Persona Jurídica",
+    tipo_responsabilidad: "R-99-PN",
+    regimen: "Responsable de IVA",
+    municipio_codigo: "05001",
+    departamento_codigo: "05",
+    ciudad: "Medellín",
+    matricula_mercantil: ""
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -19,16 +26,23 @@ function ConfiguracionEmpresa() {
     API.get("/empresa")
       .then(res => {
         if (res.data) {
-            setFormData({
-              nombre_empresa: res.data.nombre_empresa || "",
-              nit: res.data.nit || "",
-              direccion: res.data.direccion || "",
-              telefono: res.data.telefono || "",
-              correo: res.data.correo || "",
-              resolucion: res.data.resolucion || "",
-              representante_legal: res.data.representante_legal || "",
-              logo: res.data.logo || null
-            });
+              setFormData({
+                nombre_empresa: res.data.nombre_empresa || "",
+                nit: res.data.nit || "",
+                direccion: res.data.direccion || "",
+                telefono: res.data.telefono || "",
+                correo: res.data.correo || "",
+                resolucion: res.data.resolucion || "",
+                representante_legal: res.data.representante_legal || "",
+                logo: res.data.logo || null,
+                tipo_persona: res.data.tipo_persona || "Persona Jurídica",
+                tipo_responsabilidad: res.data.tipo_responsabilidad || "R-99-PN",
+                regimen: res.data.regimen || "Responsable de IVA",
+                municipio_codigo: res.data.municipio_codigo || "05001",
+                departamento_codigo: res.data.departamento_codigo || "05",
+                ciudad: res.data.ciudad || "Medellín",
+                matricula_mercantil: res.data.matricula_mercantil || ""
+              });
         }
       })
       .catch(console.error);
@@ -143,6 +157,53 @@ function ConfiguracionEmpresa() {
                     <div className="space-y-2">
                         <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Representante Legal</label>
                         <input type="text" name="representante_legal" value={formData.representante_legal} onChange={handleChange} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-slate-50 transition-all uppercase" />
+                    </div>
+
+                    <h3 className="text-xl font-medium text-slate-900 flex items-center gap-2 pt-6">
+                        <span className="w-2 h-6 bg-amber-500 rounded-full"></span> Detalles DIAN (Emisor)
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Tipo de Persona</label>
+                            <select name="tipo_persona" value={formData.tipo_persona} onChange={(e: any) => handleChange(e)} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all">
+                                <option value="Persona Jurídica">Persona Jurídica</option>
+                                <option value="Persona Natural">Persona Natural</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Régimen Fiscal</label>
+                            <select name="regimen" value={formData.regimen} onChange={(e: any) => handleChange(e)} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all">
+                                <option value="Responsable de IVA">Responsable de IVA</option>
+                                <option value="No responsable de IVA">No responsable de IVA</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Responsabilidad Fiscal (DIAN)</label>
+                            <input type="text" name="tipo_responsabilidad" value={formData.tipo_responsabilidad} onChange={handleChange} placeholder="Ej: R-99-PN" className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all uppercase" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Matrícula Mercantil</label>
+                            <input type="text" name="matricula_mercantil" value={formData.matricula_mercantil} onChange={handleChange} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all uppercase" />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Ciudad</label>
+                            <input type="text" name="ciudad" value={formData.ciudad} onChange={handleChange} className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all uppercase" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Cód. Municipio</label>
+                            <input type="text" name="municipio_codigo" value={formData.municipio_codigo} onChange={handleChange} placeholder="Ej: 05001" className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Cód. Depto</label>
+                            <input type="text" name="departamento_codigo" value={formData.departamento_codigo} onChange={handleChange} placeholder="Ej: 05" className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all" />
+                        </div>
                     </div>
 
                     <div className="space-y-4">

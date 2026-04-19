@@ -13,7 +13,10 @@ function Kardex() {
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
 
   useEffect(() => {
-    API.get("/productos").then(res => setProductos(res.data)).catch(console.error);
+    API.get("/productos").then(res => {
+        const dataArr = Array.isArray(res.data) ? res.data : (res.data.data || []);
+        setProductos(dataArr);
+    }).catch(console.error);
     fetchKardex();
   }, []);
 
@@ -27,7 +30,7 @@ function Kardex() {
 
     API.get("/kardex", { params })
       .then(res => {
-        setKardex(res.data);
+        setKardex(Array.isArray(res.data) ? res.data : []);
         setLoading(false);
       })
       .catch(err => {
@@ -40,7 +43,7 @@ function Kardex() {
     fetchKardex();
   }, [startDate, endDate, tipo, selectedProduct]);
 
-  const filteredKardex = (kardex || []).filter(k => 
+  const filteredKardex = (Array.isArray(kardex) ? kardex : []).filter(k => 
     (k.producto_nombre || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
     (k.codigo_barras || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (k.referencia || "").toLowerCase().includes(searchTerm.toLowerCase())
@@ -125,7 +128,7 @@ function Kardex() {
             className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700 focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none appearance-none transition-all cursor-pointer"
           >
             <option value="">TODOS LOS PRODUCTOS</option>
-            {productos.map(p => (
+            {(Array.isArray(productos) ? productos : []).map(p => (
               <option key={p.id} value={p.id}>{p.nombre.toUpperCase()} {p.referencia ? `(${p.referencia})` : ''}</option>
             ))}
           </select>
@@ -136,9 +139,11 @@ function Kardex() {
             <label className="text-[10px] text-slate-400 uppercase tracking-widest">Intervalo Temporal</label>
             <button 
               onClick={() => {
-                const today = new Date().toISOString().split('T')[0];
-                setStartDate(today);
-                setEndDate(today);
+                const now = new Date();
+                const offset = now.getTimezoneOffset() * 60000;
+                const localISODate = new Date(now.getTime() - offset).toISOString().split('T')[0];
+                setStartDate(localISODate);
+                setEndDate(localISODate);
               }}
               className="text-[9px] text-indigo-600 hover:underline"
             >

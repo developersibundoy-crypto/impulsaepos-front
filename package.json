@@ -12,6 +12,7 @@
     "react-router-dom": "^7.13.2",
     "react-to-print": "^3.3.0",
     "recharts": "^3.8.1",
+    "socket.io-client": "^4.8.3",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },
@@ -24,6 +25,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/socket.io-client": "^1.4.36",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.8",

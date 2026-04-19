@@ -12,11 +12,16 @@ function Facturas() {
   const [filtroRapido, setFiltroRapido] = useState("Todas");
   const [empresa, setEmpresa] = useState<any>({});
   
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const limit = 20;
+  
   // Menu options state
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
-  // Modal de Detalles
-  const [modalDetalle, setModalDetalle] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detallesFactura, setDetallesFactura] = useState<any[]>([]);
   const [phoneWS, setPhoneWS] = useState("");
 
@@ -44,15 +49,24 @@ function Facturas() {
   };
 
   useEffect(() => {
-    fetchFacturas();
+    fetchFacturas(1);
     API.get("/empresa").then(res => setEmpresa(res.data)).catch(console.error);
-  }, []);
+  }, [filtroRapido, searchTerm]);
 
-  const fetchFacturas = () => {
+  const fetchFacturas = (p: number = page) => {
     setLoading(true);
-    API.get("/ventas")
+    API.get(`/ventas?page=${p}&limit=${limit}&search=${searchTerm}&filtro=${filtroRapido}`)
       .then(res => {
-        setFacturas(res.data);
+        if (res.data && res.data.data) {
+          setFacturas(res.data.data);
+          setTotalPages(res.data.last_page || 1);
+          setTotalRecords(res.data.total || 0);
+          setPage(res.data.current_page || p);
+        } else {
+          setFacturas(Array.isArray(res.data) ? res.data : []);
+          setTotalPages(1);
+          setTotalRecords(Array.isArray(res.data) ? res.data.length : 0);
+        }
         setLoading(false);
       })
       .catch(err => {
@@ -62,8 +76,12 @@ function Facturas() {
   };
 
   const procesarBorrado = (id: number) => {
-    if (!window.confirm(`⚠️ ¿Anular factura #${id}? Se devolverá el stock.`)) return;
-    API.delete(`/ventas/${id}`)
+    const motivo = window.prompt(`⚠️ ¿Anular factura #${id}? Se devolverá el stock.\n\nEscriba el motivo de la anulación:`);
+    
+    if (motivo === null) return; // Usuario canceló
+    if (!motivo.trim()) return alert("Debe ingresar un motivo para anular la factura.");
+
+    API.delete(`/ventas/${id}`, { data: { motivo_anulacion: motivo } })
       .then(res => {
         if (res.data.success) {
           fetchFacturas();
@@ -71,36 +89,77 @@ function Facturas() {
       })
       .catch(err => {
           console.error(err);
-          alert("Error al anular.");
+          const msg = err.response?.data?.error || "Error al anular.";
+          alert(msg);
       });
   };
 
   const verDetalles = (id: number) => {
-    API.get(`/ventas/${id}`)
-      .then(res => {
-        setDetallesFactura(res.data);
-        setModalDetalle(id);
-        setMenuOpenId(null);
-        
-        // Cargar teléfono del cliente
-        const f = facturas.find(fac => fac.id === id);
-        setPhoneWS(f?.telefono?.replace(/\D/g, '') || "");
-      })
-      .catch(console.error);
+    if (expandedId === id) {
+      setExpandedId(null);
+    } else {
+      setExpandedId(id);
+      API.get(`/ventas/${id}`)
+        .then(res => {
+          setDetallesFactura(Array.isArray(res.data) ? res.data : []);
+          setMenuOpenId(null);
+          // Cargar teléfono del cliente
+          const f = facturas.find(fac => fac.id === id);
+          setPhoneWS(f?.telefono?.replace(/\D/g, '') || "");
+        })
+        .catch(console.error);
+    }
   };
 
-  const facturasFiltradas = facturas.filter((f: FacturaVenta) => {
-    const termLower = searchTerm.toLowerCase();
-    const matchSearch = 
-      (f.cliente && f.cliente.toLowerCase().includes(termLower)) || 
-      (f.id.toString().includes(termLower));
-      
-    let matchFilter = true;
-    if (filtroRapido === "Efectivo") matchFilter = f.metodo_pago === "Efectivo";
-    if (filtroRapido === "Transferencia") matchFilter = f.metodo_pago === "Transferencia";
+  const facturasFiltradas = facturas; // Filtrado ahora se hace en backend o se mantiene local si es array plano
 
-    return matchSearch && matchFilter;
-  });
+  const enviarWhatsAppTicket = (f: FacturaVenta, detalles: any[]) => {
+    // 1. Encabezado
+    const header = `🏪 *${empresa?.nombre_empresa || "MI EMPRESA"}*\n` +
+                   (empresa?.nit ? `NIT: ${empresa.nit}\n` : "") +
+                   (empresa?.direccion ? `📍 ${empresa.direccion}\n` : "") +
+                   (empresa?.telefono ? `📞 Tel: ${empresa.telefono}\n` : "") +
+                   `--------------------------------\n`;
+
+    // 2. Info de Venta
+    const saleInfo = `📄 *Factura No: ${f.id}*\n` +
+                     `📅 Fecha: ${new Date(f.fecha).toLocaleString('es-CO')}\n` +
+                     `👤 Cliente: ${Number(f.cliente_id) === 1 ? "Factura General / Mostrador" : (f.cliente || "Consumidor Final")}\n` +
+                     (f.cajero ? `👤 Vendedor: ${f.cajero}\n` : "") +
+                     `--------------------------------\n`;
+
+    // 3. Ítems
+    const itemsStr = detalles.map((d: any) => {
+        const qty = d.qty || d.cantidad || 1;
+        return `• ${d.nombre} (x${qty})\n  Subtotal: ${formatCOP(d.precio_unitario * qty)}`;
+    }).join('\n');
+
+    // 4. Totales
+    const totalsStr = `\n--------------------------------\n` +
+                      `Subtotal: ${formatCOP(f.total - (f.iva || 0))}\n` +
+                      (f.iva && f.iva > 0 ? `IVA: ${formatCOP(f.iva)}\n` : "") +
+                      `💰 *TOTAL A PAGAR: ${formatCOP(f.total)}*\n` +
+                      `Método: ${f.metodo_pago}\n`;
+
+    // 5. Pie de Página
+    const footer = `--------------------------------\n` +
+                   `🙏 ¡Gracias por su compra!\n` +
+                   (empresa?.resolucion ? `\n${empresa.resolucion}` : "");
+
+    const mensaje = `${header}${saleInfo}🛒 *Resumen:*\n${itemsStr}${totalsStr}${footer}`;
+    
+    // Obtener teléfono limpio
+    const rawPhone = f.telefono || phoneWS || "";
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    
+    let waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(mensaje)}`;
+    if (cleanPhone && cleanPhone.length >= 7) {
+        const fullNum = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+        waUrl = `https://api.whatsapp.com/send?phone=${fullNum}&text=${encodeURIComponent(mensaje)}`;
+    }
+
+    window.open(waUrl, '_blank');
+  };
 
   return (
     <div className="max-w-[1200px] mx-auto animate-in fade-in duration-700 pb-20" onClick={() => setMenuOpenId(null)}>
@@ -122,7 +181,7 @@ function Facturas() {
                     placeholder="Buscar por ID o cliente..." 
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
-                    className="w-full md:w-80 pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all font-bold text-slate-700"
+                    className="w-full md:w-80 pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all font-medium text-slate-700"
                 />
             </div>
         </div>
@@ -143,177 +202,185 @@ function Facturas() {
                 ))}
             </div>
             <div className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400 bg-white border border-slate-200 px-4 py-2 rounded-full">
-                {facturasFiltradas.length} Facturas Registradas
+                {totalRecords} Facturas Registradas
             </div>
         </div>
 
-        {/* Invoice Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+        {/* Invoice List (Horizontal / Collapsible) */}
+        <div className="space-y-3">
             {loading ? (
-                <div className="col-span-full py-20 text-center space-y-4">
+                <div className="py-20 text-center space-y-4 bg-white rounded-[32px] border border-slate-100 shadow-sm">
                     <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mx-auto"></div>
-                    <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sincronizando base de datos...</p>
+                    <p className="text-slate-400 font-medium uppercase tracking-widest text-[10px]">Sincronizando auditoría...</p>
                 </div>
             ) : facturasFiltradas.length === 0 ? (
-                <div className="col-span-full py-24 text-center bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
+                <div className="py-24 text-center bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200">
                     <div className="text-6xl mb-4">📂</div>
-                    <p className="text-slate-400 font-bold italic">No se encontraron comprobantes para esta búsqueda.</p>
+                    <p className="text-slate-400 font-medium italic">No se encontraron comprobantes para esta búsqueda.</p>
                 </div>
             ) : (
                 facturasFiltradas.map((f: FacturaVenta) => {
-                    
+                    const isExpanded = expandedId === f.id;
                     return (
-                        <div key={f.id} className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 group relative">
-                            
-                            <div className="flex justify-between items-start mb-6">
-                                <div className="space-y-1">
-                                    <h3 className="text-lg font-medium text-slate-900 tracking-tight leading-tight uppercase group-hover:text-indigo-600 transition-colors">{f.cliente || "Consumidor Final"}</h3>
-                                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Fca #{(f.id).toString().padStart(6, '0')}</span>
+                        <div 
+                            key={f.id} 
+                            className={`bg-white rounded-3xl border transition-all duration-300 overflow-hidden ${isExpanded ? 'border-indigo-500 shadow-xl shadow-indigo-100 scale-[1.01] z-10' : 'border-slate-100 hover:border-indigo-200 shadow-sm'}`}
+                        >
+                            {/* Main Row */}
+                            <div 
+                                className="p-4 flex flex-wrap items-center gap-4 cursor-pointer select-none"
+                                onClick={() => {
+                                    if (isExpanded) {
+                                        setExpandedId(null);
+                                    } else {
+                                        setExpandedId(f.id);
+                                        // Auto load details when expanded
+                                        API.get(`/ventas/${f.id}`)
+                                          .then(res => setDetallesFactura(Array.isArray(res.data) ? res.data : []))
+                                          .catch(console.error);
+                                    }
+                                }}
+                            >
+                                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center shrink-0">
+                                    <span className="text-indigo-600 font-semibold text-xs">#{f.id}</span>
                                 </div>
-                                <div className="relative">
-                                    <button 
-                                        className="w-10 h-10 flex items-center justify-center rounded-2xl hover:bg-slate-100 text-slate-400 transition-colors"
-                                        onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === f.id ? null : f.id); }}
-                                    >
-                                        <span className="text-xl font-bold leading-none">⋮</span>
-                                    </button>
-                                    {menuOpenId === f.id && (
-                                        <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-3xl shadow-2xl border border-slate-100 p-2 z-20 animate-in zoom-in duration-200">
-                                            <button onClick={() => verDetalles(f.id)} className="w-full text-left px-4 py-3 rounded-2xl hover:bg-slate-50 text-xs font-black text-slate-700 flex items-center gap-3">
-                                                <span>🔍</span> Ver Auditoría
-                                            </button>
-                                            <button onClick={() => handleImprimirVenta(f)} className="w-full text-left px-4 py-3 rounded-2xl hover:bg-slate-50 text-xs font-black text-indigo-600 flex items-center gap-3">
-                                                <span>🖨️</span> Re-imprimir Ticket
-                                            </button>
-                                            <div className="h-px bg-slate-100 my-1"></div>
-                                            <button onClick={() => procesarBorrado(f.id)} className="w-full text-left px-4 py-3 rounded-2xl hover:bg-red-50 text-xs font-black text-red-500 flex items-center gap-3">
-                                                <span>🗑️</span> Anular Venta
-                                            </button>
-                                        </div>
-                                    )}
+                                
+                                <div className="flex-1 min-w-[200px]">
+                                    <h3 className="text-sm font-semibold text-slate-900 uppercase truncate">
+                                        {Number(f.cliente_id) === 1 ? "Cliente Mostrador" : (f.cliente || "Consumidor Final")}
+                                    </h3>
+                                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">{formatDateTime(f.fecha)}</p>
                                 </div>
-                            </div>
 
-                            <div className="space-y-6">
-                                <div className="flex justify-between items-center pb-4 border-b border-slate-50">
-                                    <span className="text-[9px] font-medium text-slate-400 uppercase tracking-widest">Fecha de Emisión</span>
-                                    <span className="text-xs font-medium text-slate-600">{formatDateTime(f.fecha)}</span>
-                                </div>
-                                <div className="flex justify-between items-end">
-                                    <div className="space-y-1">
-                                        <span className={`px-3 py-1 rounded-full text-[9px] font-medium uppercase tracking-tighter ${
-                                            f.metodo_pago === 'Efectivo' ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
-                                        }`}>
-                                            {f.metodo_pago}
-                                        </span>
-                                    </div>
+                                <div className="shrink-0 flex items-center gap-6">
                                     <div className="text-right">
-                                        <span className="text-[9px] font-medium text-slate-400 uppercase tracking-widest block mb-1">Monto Total</span>
-                                        <span className="text-2xl font-medium text-slate-900 tracking-tighter">{formatCOP(f.total)}</span>
+                                        <p className={`text-[8px] font-semibold uppercase tracking-tighter mb-0.5 ${f.metodo_pago === 'Efectivo' ? 'text-emerald-500' : 'text-sky-500'}`}>{f.metodo_pago}</p>
+                                        <p className="text-lg font-semibold text-slate-900 tracking-tighter leading-none">{formatCOP(f.total)}</p>
+                                    </div>
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>
+                                        <span className="text-xl">↓</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="absolute inset-x-8 bottom-0 h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent scale-x-0 group-hover:scale-x-100 transition-transform duration-700"></div>
+                            {/* Collapsible Details */}
+                            {isExpanded && (
+                                <div className="px-6 pb-6 pt-2 bg-slate-50/50 animate-in slide-in-from-top-2 duration-300">
+                                    <div className="h-px bg-slate-100 mb-6"></div>
+                                    
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {/* Items List */}
+                                        <div className="space-y-3 lg:col-span-2">
+                                            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-[0.2em] mb-4">Detalle de Mercancía</h4>
+                                            {detallesFactura.length === 0 ? (
+                                                <div className="py-4 text-center text-[10px] text-slate-400 animate-pulse">Cargando detalles...</div>
+                                            ) : (
+                                                detallesFactura.map((d, i) => (
+                                                    <div key={i} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-[20px] shadow-sm">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-semibold text-slate-900 uppercase truncate mb-0.5">{d.nombre}</p>
+                                                            <p className="text-[11px] text-slate-500 font-medium">{d.cantidad} unidades x {formatCOP(d.precio_unitario)}</p>
+                                                        </div>
+                                                        <div className="text-right ml-4">
+                                                            <span className="text-sm font-bold text-indigo-600 block">{formatCOP(d.cantidad * d.precio_unitario)}</span>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        {/* Audit Actions */}
+                                        <div className="space-y-4 lg:col-span-1 border-l border-slate-100 pl-0 lg:pl-6">
+                                            <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.2em] mb-4">Panel de Auditoría</h4>
+                                            
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button 
+                                                    onClick={() => handleImprimirVenta(f)}
+                                                    className="py-1.5 bg-slate-900 text-white rounded-xl text-[9px] font-medium uppercase tracking-widest hover:bg-black transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <span>🖨️</span> Ticket
+                                                </button>
+                                                <button 
+                                                    onClick={() => enviarWhatsAppTicket(f, detallesFactura)}
+                                                    className="py-1.5 bg-emerald-600 text-white rounded-xl text-[9px] font-medium uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <span>📲</span> WhatsApp
+                                                </button>
+                                            </div>
+
+                                            <button 
+                                                onClick={() => procesarBorrado(f.id)}
+                                                className="w-full py-3 bg-rose-50 text-rose-600 border border-rose-100 rounded-2xl text-[10px] font-medium uppercase tracking-widest hover:bg-rose-100 transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <span>🗑️</span> Anular este Comprobante
+                                            </button>
+
+                                            <div className="bg-white p-4 rounded-2xl border border-slate-100">
+                                                <p className="text-[9px] font-medium text-slate-300 uppercase tracking-[0.2em] mb-3">Trazabilidad</p>
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between text-[10px]">
+                                                        <span className="text-slate-400 font-medium">Vendedor:</span>
+                                                        <span className="text-slate-600 font-semibold uppercase">{f.cajero || "Cajero Principal"}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-[10px]">
+                                                        <span className="text-slate-400 font-medium">IVA Reportado:</span>
+                                                        <span className="text-rose-500 font-semibold">{formatCOP(f.iva || 0)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 })
             )}
         </div>
 
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-4 mt-10 no-print">
+                <button 
+                    disabled={page === 1}
+                    onClick={() => {
+                        const newPage = page - 1;
+                        setPage(newPage);
+                        fetchFacturas(newPage);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-medium uppercase tracking-widest transition-all ${
+                        page === 1 ? 'bg-slate-100 text-slate-300' : 'bg-white text-indigo-600 border border-slate-200 hover:bg-indigo-50 shadow-sm'
+                    }`}
+                >
+                    Anterior
+                </button>
+                <div className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-medium uppercase tracking-widest shadow-md">
+                    Página {page} de {totalPages}
+                </div>
+                <button 
+                    disabled={page === totalPages}
+                    onClick={() => {
+                        const newPage = page + 1;
+                        setPage(newPage);
+                        fetchFacturas(newPage);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-[10px] font-medium uppercase tracking-widest transition-all ${
+                        page === totalPages ? 'bg-slate-100 text-slate-300' : 'bg-white text-indigo-600 border border-slate-200 hover:bg-indigo-50 shadow-sm'
+                    }`}
+                >
+                    Siguiente
+                </button>
+            </div>
+        )}
+
         {/* Floating Button */}
         <button 
             onClick={() => window.location.href="/"}
-            className="fixed bottom-10 right-10 w-16 h-16 bg-slate-900 text-white rounded-full flex items-center justify-center text-3xl font-black shadow-2xl hover:scale-110 active:scale-95 transition-all z-30"
+            className="fixed bottom-10 right-10 w-16 h-16 bg-slate-900 text-white rounded-full flex items-center justify-center text-3xl font-semibold shadow-2xl hover:scale-110 active:scale-95 transition-all z-30"
         >+</button>
       </div>
 
-      {/* MODAL: Detalles */}
-      {modalDetalle && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setModalDetalle(null)}></div>
-          <div className="relative w-full max-w-xl bg-white rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in duration-400">
-            <div className="p-10 border-b border-slate-100 flex justify-between items-center">
-                <h2 className="text-2xl font-black tracking-tight text-slate-900">Auditoría Factura #{modalDetalle}</h2>
-                <button onClick={() => setModalDetalle(null)} className="text-3xl text-slate-400 hover:text-slate-600">&times;</button>
-            </div>
-            
-            <div className="p-10">
-                <div className="max-h-[400px] overflow-y-auto pr-2 space-y-4">
-                    {detallesFactura.map((d, i) => (
-                        <div key={i} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                            <div className="min-w-0">
-                                <h4 className="text-sm font-medium text-slate-800 truncate uppercase">{d.nombre}</h4>
-                                <p className="text-[10px] font-medium text-slate-400 mt-1">{d.cantidad} Unds x {formatCOP(d.precio_unitario)}</p>
-                            </div>
-                            <div className="text-right ml-4 shrink-0">
-                                <span className="text-sm font-medium text-indigo-600">{formatCOP(d.cantidad * d.precio_unitario)}</span>
-                            </div>
-                        </div>
-                    ))}
-                </div>
 
-                <div className="mt-8 space-y-4">
-                    <div className="relative">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block text-center">WhatsApp del Cliente</label>
-                        <div className="flex gap-2">
-                           <span className="flex items-center justify-center bg-slate-100 px-4 rounded-2xl text-slate-500 font-bold text-xs">+57</span>
-                           <input 
-                             type="text" 
-                             placeholder="Número de celular..." 
-                             value={phoneWS}
-                             onChange={(e) => setPhoneWS(e.target.value)}
-                             className="flex-1 px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:bg-white focus:ring-4 focus:ring-emerald-50 outline-none font-bold text-slate-700 text-lg text-center"
-                           />
-                        </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                        <button 
-                            className="flex-1 py-5 bg-slate-900 text-white font-medium rounded-3xl shadow-xl hover:-translate-y-1 transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-2"
-                            onClick={() => {
-                              const f = facturas.find(fac => fac.id === modalDetalle);
-                              if (f) setFacturaPrintData({ cabecera: f, detalles: detallesFactura });
-                            }}
-                        >
-                            🖨️ Re-Imprimir
-                        </button>
-                        <button 
-                            className="flex-1 py-5 bg-emerald-600 text-white font-medium rounded-3xl shadow-xl shadow-emerald-100 hover:-translate-y-1 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest"
-                            onClick={() => {
-                              const f = facturas.find(fac => fac.id === modalDetalle);
-                              if (!f) return;
-                              
-                              let targetPhone = phoneWS.replace(/\D/g, '');
-                              
-                              const launchWS = (num: string) => {
-                                const itemsText = detallesFactura.map(d => `• ${d.nombre} (x${d.cantidad})`).join('\n');
-                                const message = `¡Hola! 👋\n📄 *Factura Digital ${empresa.nombre_empresa || 'de nuestra tienda'}*\n\n*Comprobante # ${f.id}*\n💰 *Total:* ${formatCOP(f.total)}\n\n🛒 *Resumen:*\n${itemsText}\n\n¡Gracias por su compra! ✨`;
-                                const fullNum = num.startsWith('57') ? num : `57${num}`;
-                                window.open(`https://api.whatsapp.com/send?phone=${fullNum}&text=${encodeURIComponent(message)}`, '_blank');
-                              };
-
-                              if (!targetPhone || targetPhone === '0') {
-                                 const manualPhone = window.prompt("📱 Ingresa el número de WhatsApp (ej: 300...):");
-                                 if (manualPhone) {
-                                     targetPhone = manualPhone.replace(/\D/g, '');
-                                     setPhoneWS(targetPhone);
-                                     launchWS(targetPhone);
-                                 }
-                              } else {
-                                 launchWS(targetPhone);
-                              }
-                            }}
-                        >
-                            📱 Compartir
-                        </button>
-                    </div>
-                    <button onClick={() => setModalDetalle(null)} className="w-full py-5 bg-slate-100 text-slate-500 font-medium rounded-3xl hover:bg-slate-200 transition-all uppercase tracking-widest text-[10px]">Cerrar Auditoría</button>
-                </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div style={{ display: 'none' }}>
         {facturaPrintData && (
@@ -322,7 +389,7 @@ function Facturas() {
             empresa={empresa}
             numero={facturaPrintData.cabecera.id}
             fecha={facturaPrintData.cabecera.fecha}
-            cliente={facturaPrintData.cabecera.cliente || "Consumidor Final"}
+            cliente={Number(facturaPrintData.cabecera.cliente_id) === 1 ? "Fca. General / Mostrador" : (facturaPrintData.cabecera.cliente || "Consumidor Final")}
             cajero={facturaPrintData.cabecera.cajero || "Principal"}
             metodoPago={facturaPrintData.cabecera.metodo_pago}
             items={facturaPrintData.detalles}

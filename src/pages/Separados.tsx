@@ -45,8 +45,13 @@ export default function Separados() {
   const [abonoInput, setAbonoInput] = useState("");
 
   const [cajeros, setCajeros] = useState<any[]>([]);
-  const [cajeroId, setCajeroId] = useState("");
+  const [cajeroId, setCajeroId] = useState(localStorage.getItem('adminCajeroId') || "");
   const [phoneWS, setPhoneWS] = useState("");
+
+  const viewSeparadoRef = useRef<any>(null);
+  useEffect(() => {
+    viewSeparadoRef.current = viewSeparado;
+  }, [viewSeparado]);
 
   // Payment Methods States
   const [metodoPago, setMetodoPago] = useState("Efectivo");
@@ -63,7 +68,7 @@ export default function Separados() {
     window.scrollTo(0, 0);
     fetchSeparados();
     API.get("/clientes").then(res => setClientes(res.data)).catch(console.error);
-    API.get("/productos").then(res => setProductos(res.data)).catch(console.error);
+    API.get("/productos").then(res => setProductos(Array.isArray(res.data) ? res.data : (res.data.data || []))).catch(console.error);
     API.get("/cajeros")
       .then(res => {
         setCajeros(res.data);
@@ -72,8 +77,39 @@ export default function Separados() {
         }
       })
       .catch(console.error);
-    API.get("/empresa").then(res => setEmpresa(res.data)).catch(console.error);
-  }, [cajeroId]);
+    
+    API.get("/empresa").then(res => {
+      setEmpresa(res.data);
+      // Sincronización Real-time
+      if (res.data.id) {
+         import("../utils/socket").then(({ joinEmpresaRoom, socket }) => {
+            joinEmpresaRoom(res.data.id);
+            
+            // Listener para nuevos creados o cambios de estado
+            const handleGeneralUpdate = () => fetchSeparados();
+            socket.on("separado_created", handleGeneralUpdate);
+            socket.on("separado_updated", handleGeneralUpdate);
+
+            // Listener para abonos (Afecta la vista interna si está abierta)
+            socket.on("abono_added", ({ separado_id }) => {
+               fetchSeparados();
+               // Si la ventana abierta es la de este separado, refrescarla
+               if (viewSeparadoRef.current?.id === separado_id) {
+                 openView(separado_id);
+               }
+            });
+         });
+      }
+    }).catch(console.error);
+
+    return () => {
+      import("../utils/socket").then(({ socket }) => {
+        socket.off("separado_created");
+        socket.off("separado_updated");
+        socket.off("abono_added");
+      });
+    };
+  }, []);
 
   const fetchSeparados = () => {
     setLoading(true);
@@ -99,7 +135,8 @@ export default function Separados() {
         abono_inicial: abono,
         metodo_pago: metodoPago,
         pago_efectivo: parseFloat(pagoEfectivo) || 0,
-        pago_transferencia: parseFloat(pagoTransferencia) || 0
+        pago_transferencia: parseFloat(pagoTransferencia) || 0,
+        cajero_id: cajeroId ? parseInt(cajeroId) : null
       };
 
       await API.post("/separados", payload);
@@ -130,6 +167,19 @@ export default function Separados() {
       setCart([...cart, { ...prod, qty: 1 }]);
     }
     setProdSearch("");
+  };
+
+  const handleProdKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && prodSearch.trim() !== '') {
+      const items = Array.isArray(productos) ? productos : [];
+      const matched = items.find(p => 
+        (p.referencia && String(p.referencia).toLowerCase() === prodSearch.toLowerCase()) ||
+        (String(p.nombre).toLowerCase().includes(prodSearch.toLowerCase()))
+      );
+      if (matched) {
+        addProdToCart(matched);
+      }
+    }
   };
 
   const updateCartQty = (id: number, delta: number) => {
@@ -200,7 +250,8 @@ export default function Separados() {
         monto: abono,
         metodo_pago: metodoPago,
         pago_efectivo: parseFloat(pagoEfectivo) || 0,
-        pago_transferencia: parseFloat(pagoTransferencia) || 0
+        pago_transferencia: parseFloat(pagoTransferencia) || 0,
+        cajero_id: cajeroId ? parseInt(cajeroId) : null
       });
       setMetodoPago("Efectivo");
       setPagoEfectivo("");
@@ -417,10 +468,19 @@ export default function Separados() {
                                 </div>
                             ) : (
                                 <div className="relative">
-                                    <input type="text" value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} placeholder="Nombre o cédula del cliente..." className="w-full px-5 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-medium outline-none focus:bg-white focus:ring-2 focus:ring-blue-100" />
+                                    <input 
+                                        type="text" 
+                                        value={clienteSearch} 
+                                        onChange={e => setClienteSearch(e.target.value)} 
+                                        placeholder="Nombre o cédula del cliente..." 
+                                        className="w-full px-5 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-medium outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10" 
+                                    />
                                     {clienteSearch && (
                                         <div className="absolute top-full left-0 right-0 bg-white border border-slate-100 rounded-xl shadow-xl z-20 mt-1 overflow-hidden max-h-40 overflow-y-auto">
-                                            {(clientes as any[]).filter(c => c.nombre.toLowerCase().includes(clienteSearch.toLowerCase()) || (c.documento && c.documento.includes(clienteSearch))).map(c => (
+                                            {(clientes as any[]).filter(c => 
+                                        (c.nombre && String(c.nombre).toLowerCase().includes(clienteSearch.toLowerCase())) || 
+                                        (c.documento && String(c.documento).includes(clienteSearch))
+                                    ).map(c => (
                                                 <div key={c.id} onClick={() => { setNewClienteId(c.id.toString()); setClienteSearch(""); }} className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 text-[11px] font-bold text-slate-700 uppercase">
                                                     {c.nombre} <span className="text-[9px] text-slate-400 ml-2">ID: {c.documento}</span>
                                                 </div>
@@ -431,12 +491,27 @@ export default function Separados() {
                             )}
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest ml-1">Ítems a Reservar</label>
-                            <input type="text" value={prodSearch} onChange={e => setProdSearch(e.target.value)} placeholder="Referencia o nombre del producto..." className="w-full px-5 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-100" />
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-end">
+                                <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest ml-1">Ítems a Reservar</label>
+                                <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg border border-blue-100 italic">
+                                    {cart.reduce((a,c) => a+c.qty, 0)} PRODUCTOS REGISTRADOS
+                                </span>
+                            </div>
+                            <input 
+                                type="text" 
+                                value={prodSearch} 
+                                onChange={e => setProdSearch(e.target.value)} 
+                                onKeyDown={handleProdKeyPress}
+                                placeholder="Escanea código o busca por nombre..." 
+                                className="w-full px-5 py-3.5 bg-slate-50 border-2 border-blue-50 rounded-2xl text-sm font-bold outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/30 transition-all placeholder:text-slate-300" 
+                            />
                             {prodSearch && (
                                 <div className="bg-white border border-slate-100 rounded-xl shadow-lg overflow-hidden max-h-40 overflow-y-auto mt-1">
-                                    {productos.filter(p => p.nombre.toLowerCase().includes(prodSearch.toLowerCase()) || (p.referencia && p.referencia.toLowerCase().includes(prodSearch.toLowerCase()))).map(p => (
+                                    {(Array.isArray(productos) ? productos : []).filter(p => 
+                                        String(p.nombre).toLowerCase().includes(prodSearch.toLowerCase()) || 
+                                        (p.referencia && String(p.referencia).toLowerCase().includes(prodSearch.toLowerCase()))
+                                    ).map(p => (
                                         <div key={p.id} onClick={() => addProdToCart(p)} className="p-3 hover:bg-blue-50 cursor-pointer border-b border-slate-50 flex justify-between items-center transition-colors">
                                             <div className="space-y-0.5">
                                                 <div className="text-[11px] font-bold text-slate-800 uppercase leading-tight">{p.nombre}</div>
@@ -547,10 +622,10 @@ export default function Separados() {
                             <div className="bg-slate-50 rounded-3xl p-5 border border-slate-100 space-y-3">
                                 {(() => {
                                     const items = typeof viewSeparado.detalles_json === 'string' ? JSON.parse(viewSeparado.detalles_json) : viewSeparado.detalles_json;
-                                    return items.map((itm: any, idx: number) => (
+                                    return (items || []).map((itm: any, idx: number) => (
                                         <div key={idx} className="flex justify-between items-center text-xs text-slate-700 border-b border-slate-200/50 pb-2 last:border-0 last:pb-0">
                                             <span>{itm.qty || itm.cantidad}x <span className="uppercase text-slate-400">{itm.nombre}</span></span>
-                                            <span>{formatCOP(itm.precio_venta * (itm.qty || itm.cantidad))}</span>
+                                            <span>{formatCOP((itm.precio_venta || itm.precio_final || 0) * (itm.qty || itm.cantidad))}</span>
                                         </div>
                                     ));
                                 })()}
@@ -565,11 +640,21 @@ export default function Separados() {
                             <h4 className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em]">Trayectoria de Pagos</h4>
                             <div className="space-y-2">
                                 {viewAbonos.length > 0 ? viewAbonos.map(a => (
-                                    <div key={a.id} className="flex justify-between items-center p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl">
-                                        <div className="text-[10px] font-medium text-emerald-700 uppercase tracking-widest italic">{new Date(a.fecha_abono).toLocaleDateString()}</div>
-                                        <div className="font-medium text-emerald-600 text-sm">+{formatCOP(a.monto)}</div>
+                                    <div key={a.id} className="flex justify-between items-start p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl group transition-all hover:bg-emerald-50">
+                                        <div className="space-y-0.5">
+                                            <div className="text-[10px] font-medium text-emerald-700 uppercase tracking-widest italic">
+                                                {a.fecha_abono ? new Date(a.fecha_abono).toLocaleDateString('es-CO') : 'Reciente'}
+                                            </div>
+                                            {a.cajero_nombre && (
+                                                <div className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Recibido por: {a.cajero_nombre}</div>
+                                            )}
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="font-medium text-emerald-600 text-sm">+{formatCOP(a.monto)}</div>
+                                            <div className="text-[7px] font-bold text-slate-300 uppercase">{a.metodo_pago}</div>
+                                        </div>
                                     </div>
-                                )) : <p className="text-center py-4 text-slate-300 font-medium italic text-xs">Sin movimientos recientes.</p>}
+                                )) : <p className="text-center py-4 text-slate-300 font-medium italic text-xs">Sin movimientos registrados.</p>}
                             </div>
                         </div>
 
@@ -577,10 +662,18 @@ export default function Separados() {
                             <div className="pt-4 border-t border-slate-100 space-y-4">
                                 {parseFloat(viewSeparado.saldo_pendiente) > 0 ? (
                                     <div className="bg-amber-50 p-4 rounded-3xl border border-amber-100 space-y-3">
+                                    <div className="space-y-1">
                                         <div className="flex justify-between items-center">
-                                            <span className="text-[10px] font-medium text-amber-600 uppercase tracking-widest">Deuda Restante</span>
-                                            <span className="text-xl font-medium text-amber-700 tracking-tighter">{formatCOP(viewSeparado.saldo_pendiente)}</span>
+                                            <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Deuda Actual</span>
+                                            <span className="text-xl font-black text-amber-600 tracking-tighter">{formatCOP(viewSeparado.saldo_pendiente)}</span>
                                         </div>
+                                        <div className="flex justify-between items-center border-t border-amber-200/50 pt-1">
+                                            <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest italic">Saldo proyectado</span>
+                                            <span className="text-sm font-black text-emerald-700 tracking-tighter bg-emerald-50 px-2 rounded-lg">
+                                                {formatCOP(Math.max(0, viewSeparado.saldo_pendiente - (parseFloat(abonoInput) || 0)))}
+                                            </span>
+                                        </div>
+                                    </div>
                                         <div className="space-y-4">
                                             <div className="grid grid-cols-3 gap-2">
                                                 {["Efectivo", "Transferencia", "Mixto"].map((m) => (
@@ -671,13 +764,16 @@ export default function Separados() {
             numero={`SEP-${separadoPrintData.separado.id}`}
             fecha={separadoPrintData.separado.fecha_creacion}
             cliente={separadoPrintData.separado.cliente_nombre}
-            cajero={cajeros.find(c => c.id == separadoPrintData.separado.cajero_id)?.nombre || undefined}
-            items={typeof separadoPrintData.separado.detalles_json === 'string' ? JSON.parse(separadoPrintData.separado.detalles_json) : separadoPrintData.separado.detalles_json}
+            cajero={separadoPrintData.separado.cajero_nombre || cajeros.find(c => c.id == separadoPrintData.separado.cajero_id)?.nombre || undefined}
+            items={(() => {
+                const items = typeof separadoPrintData.separado.detalles_json === 'string' ? JSON.parse(separadoPrintData.separado.detalles_json) : separadoPrintData.separado.detalles_json;
+                return (items || []);
+            })()}
             total={parseFloat(separadoPrintData.separado.total)}
             isSeparado={true}
-            totalAbonado={parseFloat(separadoPrintData.separado.total) - parseFloat(separadoPrintData.separado.saldo_pendiente)}
-            saldoPendiente={parseFloat(separadoPrintData.separado.saldo_pendiente)}
-            historialPagos={separadoPrintData.abonos}
+            totalAbonado={parseFloat(separadoPrintData.separado.total || 0) - parseFloat(separadoPrintData.separado.saldo_pendiente || 0)}
+            saldoPendiente={parseFloat(separadoPrintData.separado.saldo_pendiente || 0)}
+            historialPagos={(separadoPrintData.abonos || []).map((a: any) => ({ ...a, fecha: a.fecha_abono || new Date() }))}
           />
         )}
       </div>

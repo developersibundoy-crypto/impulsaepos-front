@@ -9,7 +9,7 @@ interface PrintReceiptProps {
   cajero?: string;
   metodoPago?: string;
   items: Array<{ nombre: string; cantidad: number; precio_unitario?: number; precio_venta?: number; qty?: number; referencia?: string }>;
-  subtotal?: number;
+  iva?: number;
   total: number;
   vuelto?: number;
   efectivoRecibido?: number;
@@ -22,7 +22,7 @@ interface PrintReceiptProps {
 }
 
 const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
-  ({ empresa, numero, fecha, cliente, cajero, metodoPago, items, subtotal, total, vuelto, efectivoRecibido, isSeparado, totalAbonado, saldoPendiente, historialPagos, pagoEfectivoMixto, pagoTransferenciaMixto }, ref) => {
+  ({ empresa, numero, fecha, cliente, cajero, metodoPago, items, iva, total, vuelto, efectivoRecibido, isSeparado, totalAbonado, saldoPendiente, historialPagos, pagoEfectivoMixto, pagoTransferenciaMixto }, ref) => {
     return (
       <div 
         ref={ref} 
@@ -70,14 +70,9 @@ const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
           </thead>
           <tbody>
             {items.map((item, idx) => {
-              // Prioridad a qty (cuando viene del carrito), luego a cantidad (cuando viene del historial/DB)
               const cantidadFacturada = item.qty !== undefined ? item.qty : (item.cantidad || 1);
-              
-              // Precio Venta Original
               const precioOrig = item.precio_venta || item.precio_unitario || 0;
-              // Precio Final con el que se vendió
               const precioFin = item.precio_unitario !== undefined ? item.precio_unitario : precioOrig;
-              
               const rowTotal = precioFin * cantidadFacturada;
               const hasDiscount = precioOrig > precioFin;
 
@@ -85,7 +80,7 @@ const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
                 <tr key={idx} className="border-b border-dashed border-gray-300">
                   <td className="py-1.5 align-top w-[45%]">
                     <div className="uppercase font-medium break-words leading-tight">{item.nombre}</div>
-                    {item.referencia && <div className="text-[8px] text-gray-500 mt-0.5">REF: {item.referencia}</div>}
+                    {item.referencia && <div className="text-[11px] font-black mt-0.5 border-t border-gray-100 pt-0.5 mb-1">REF: {item.referencia}</div>}
                     <div className="text-[9px] mt-0.5">{cantidadFacturada} UND</div>
                   </td>
                   <td className="text-right py-1.5 align-top w-[30%]">
@@ -109,48 +104,21 @@ const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
 
         {/* Totales */}
         <div className="space-y-1 border-t-2 border-black pt-2 mb-4">
-          {(() => {
-            const subtotalSinDesp = items.reduce((acc, item) => {
-               const qty = item.qty !== undefined ? item.qty : (item.cantidad || 1);
-               const orig = item.precio_venta || item.precio_unitario || 0;
-               return acc + (orig * qty);
-            }, 0);
-            
-            const totalConDesp = items.reduce((acc, item) => {
-               const qty = item.qty !== undefined ? item.qty : (item.cantidad || 1);
-               const fin = item.precio_unitario !== undefined ? item.precio_unitario : (item.precio_venta || 0);
-               return acc + (fin * qty);
-            }, 0);
-
-            const ahorroTotal = subtotalSinDesp - totalConDesp;
-
-            return (
-              <>
-                 {ahorroTotal > 0 ? (
-                    <>
-                      <div className="flex justify-between text-[11px] text-gray-600">
-                        <span>Subtotal Base:</span>
-                        <span>{formatCOP(subtotalSinDesp)}</span>
-                      </div>
-                      <div className="flex justify-between text-[11px] font-bold text-black border-dashed border-b border-gray-300 pb-1 mb-1">
-                        <span>Ahorro Total:</span>
-                        <span>-{formatCOP(ahorroTotal)}</span>
-                      </div>
-                    </>
-                 ) : (
-                    <div className="flex justify-between text-[11px]">
-                        <span>Subtotal:</span>
-                        <span>{formatCOP(subtotalSinDesp)}</span>
-                    </div>
-                 )}
-                 
-                 <div className="flex justify-between text-sm font-black mt-1">
-                   <span>TOTAL A PAGAR:</span>
-                   <span>{formatCOP(total)}</span>
-                 </div>
-              </>
-            );
-          })()}
+          <div className="flex justify-between text-[11px] mt-1">
+            <span>Subtotal:</span>
+            <span>{formatCOP(total - (iva || 0))}</span>
+          </div>
+          {iva !== undefined && iva > 0 && (
+            <div className="flex justify-between text-[11px] border-b border-dashed border-gray-300 pb-1">
+              <span>IVA:</span>
+              <span>{formatCOP(iva)}</span>
+            </div>
+          )}
+          
+          <div className="flex justify-between text-sm font-black mt-1">
+            <span>TOTAL A PAGAR:</span>
+            <span>{formatCOP(total)}</span>
+          </div>
 
           {metodoPago && (
             <div className="flex justify-between text-xs mt-2 border-t border-dashed border-gray-300 pt-1">
@@ -208,12 +176,22 @@ const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
                  </tr>
                </thead>
                <tbody>
-                 {historialPagos.map((pago: any, pIdx: number) => (
-                   <tr key={pIdx} className="border-b border-dashed border-gray-300">
-                     <td className="py-1">{new Date(pago.fecha).toLocaleDateString()}</td>
-                     <td className="text-right py-1 font-bold">{formatCOP(pago.monto)}</td>
-                   </tr>
-                 ))}
+                  {historialPagos.map((pago: any, pIdx: number) => {
+                    const paymentDate = pago.fecha ? new Date(pago.fecha) : new Date();
+                    return (
+                      <tr key={pIdx} className="border-b border-dashed border-gray-300">
+                        <td className="py-1">
+                          <div className="text-[9px] uppercase text-gray-800">
+                            {paymentDate.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          </div>
+                          {pago.cajero_nombre && (
+                            <div className="text-[7px] text-gray-500 italic">Cajero: {pago.cajero_nombre}</div>
+                          )}
+                        </td>
+                        <td className="text-right py-1 font-bold">{formatCOP(pago.monto)}</td>
+                      </tr>
+                    );
+                  })}
                </tbody>
              </table>
           </div>

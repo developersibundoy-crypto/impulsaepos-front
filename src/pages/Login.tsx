@@ -3,10 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import API from '../api/api'; 
 
 import WompiCheckout from '../components/WompiCheckout';
+import { useCaja } from '../components/CajaContext';
+
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { verificarEstado } = useCaja();
   const [mode, setMode] = useState<'login' | 'register' | 'recover'>('login');
+
   const [recoverStep, setRecoverStep] = useState(1); // 1: NIT/User, 2: Method, 3: OTP, 4: New Pass
   const [recoverData, setRecoverData] = useState({ nit: '', method: '', obscureEmail: '', obscurePhone: '', otp: '', confirmPassword: '' });
   
@@ -95,9 +99,13 @@ const Login: React.FC = () => {
         localStorage.setItem('adminRole', response.data.role);
         localStorage.setItem('adminUser', response.data.username);
         localStorage.setItem('adminEmpresaId', response.data.empresa_id);
-
+        localStorage.setItem('adminCajeroId', response.data.cajero_id || "");
+        localStorage.setItem('adminPermisos', response.data.permisos || "");
+        
+        await verificarEstado();
         navigate('/');
       }
+
     } catch (err: any) {
       const data = err.response?.data;
       if (data?.reason === 'expired') {

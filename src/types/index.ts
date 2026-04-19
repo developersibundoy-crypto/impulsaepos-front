@@ -7,6 +7,10 @@ export interface Producto {
   precio_compra: number;
   porcentaje_ganancia: number;
   precio_venta: number;
+  es_servicio?: boolean;
+  permitir_venta_negativa?: boolean;
+  iva_porcentaje?: string | number;
+  fecha_vencimiento?: string;
 }
 
 export interface Cajero {
@@ -37,11 +41,13 @@ export interface FacturaVenta {
   id: number;
   fecha: string;
   total: number;
+  iva?: number;
   metodo_pago: string;
   pago_efectivo?: number;
   pago_transferencia?: number;
   cajero: string;
   cliente: string;
+  cliente_id?: number;
   telefono?: string;
   estado?: string;
 }
@@ -56,6 +62,7 @@ export interface Borrador {
 
 export interface ProductoIngresado extends Producto {
   inyectado?: boolean;
+  cantidad_inyectada?: number;
 }
 
 export interface CartItem extends Producto {

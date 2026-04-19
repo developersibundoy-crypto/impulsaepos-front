@@ -7,8 +7,11 @@ function Clientes() {
   const [formData, setFormData] = useState({ 
     nombre: "", 
     documento: "", 
+    dv: "",
+    tipo_documento: "13",
     telefono: "", 
     correo: "", 
+    correo_electronico_facturacion: "",
     direccion: "" 
   });
 
@@ -41,7 +44,10 @@ function Clientes() {
         alert("✅ Cliente registrado");
       }
 
-      setFormData({ nombre: "", documento: "", telefono: "", correo: "", direccion: "" });
+      setFormData({ 
+        nombre: "", documento: "", dv: "", tipo_documento: "13", 
+        telefono: "", correo: "", correo_electronico_facturacion: "", direccion: "" 
+      });
       setEditingId(null);
       fetchClientes();
     } catch (error) {
@@ -54,15 +60,23 @@ function Clientes() {
     setFormData({
       nombre: c.nombre,
       documento: c.documento || "",
+      dv: c.dv || "",
+      tipo_documento: c.tipo_documento || "13",
       telefono: c.telefono || "",
       correo: c.correo === "nna" ? "" : c.correo,
+      correo_electronico_facturacion: c.correo_electronico_facturacion || "",
       direccion: c.direccion || ""
     });
   };
 
   const handleCancel = () => {
-    setFormData({ nombre: "", documento: "", telefono: "", correo: "", direccion: "" });
+  const handleCancel = () => {
+    setFormData({ 
+        nombre: "", documento: "", dv: "", tipo_documento: "13", 
+        telefono: "", correo: "", correo_electronico_facturacion: "", direccion: "" 
+    });
     setEditingId(null);
+  };
   };
 
   const handleDelete = async (id: number) => {
@@ -116,9 +130,26 @@ function Clientes() {
                         <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Nombre Completo / Razón Social</label>
                         <input type="text" name="nombre" value={formData.nombre} onChange={handleChange} required className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-violet-50 transition-all" />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Cédula / NIT</label>
-                        <input type="text" name="documento" value={formData.documento} onChange={handleChange} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-violet-50 transition-all" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Tipo Documento</label>
+                            <select name="tipo_documento" value={formData.tipo_documento} onChange={(e: any) => handleChange(e)} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all">
+                                <option value="13">Cédula de Ciudadanía</option>
+                                <option value="31">NIT (DIAN)</option>
+                                <option value="11">Registro Civil</option>
+                                <option value="12">Tarjeta de Identidad</option>
+                                <option value="41">Pasaporte</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">{formData.tipo_documento === '31' ? "NIT / Identificación" : "Número Documento"}</label>
+                            <div className="flex gap-2">
+                                <input type="text" name="documento" value={formData.documento} onChange={handleChange} className="flex-1 px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all" />
+                                {formData.tipo_documento === '31' && (
+                                    <input type="text" name="dv" value={formData.dv} onChange={handleChange} placeholder="DV" className="w-12 px-2 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium text-center outline-none focus:bg-white transition-all" maxLength={1} />
+                                )}
+                            </div>
+                        </div>
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Teléfono (WhatsApp)</label>
@@ -128,9 +159,15 @@ function Clientes() {
                         <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Dirección Física</label>
                         <input type="text" name="direccion" value={formData.direccion} onChange={handleChange} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-violet-50 transition-all" />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Email (Opcional)</label>
-                        <input type="text" name="correo" value={formData.correo} onChange={handleChange} placeholder="nna@redcograf.com" className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-violet-50 transition-all" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Email General</label>
+                            <input type="text" name="correo" value={formData.correo} onChange={handleChange} placeholder="nna@redcograf.com" className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white transition-all shadow-inner" />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1 text-violet-600">Email Facturación ✨</label>
+                            <input type="text" name="correo_electronico_facturacion" value={formData.correo_electronico_facturacion} onChange={handleChange} placeholder="Requerido para FE" className="w-full px-5 py-3 bg-violet-50/30 border border-violet-100 rounded-2xl font-medium outline-none focus:bg-white transition-all" />
+                        </div>
                     </div>
                     <button type="submit" className="w-full py-4 bg-violet-600 text-white rounded-3xl font-medium shadow-xl shadow-violet-100 hover:bg-violet-700 hover:-translate-y-1 transition-all uppercase tracking-widest text-xs">
                         {editingId ? "💾 Guardar Cambios" : "⭐ Vincular Cliente"}
