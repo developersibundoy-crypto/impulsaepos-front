@@ -97,10 +97,17 @@ const Navigation = () => {
 
 
   const NavLink = ({ to, label, emoji, activeClass, module, planFeature }: any) => {
-    if (module && !hasAccess(module)) return null;
+    const hasModuleAccess = module ? hasAccess(module) : true;
+    const hasFeatureAccess = planFeature ? hasPlanFeature(planFeature) : true;
 
     const handleClick = (e: React.MouseEvent) => {
-      if (planFeature && !hasPlanFeature(planFeature)) {
+      if (!hasModuleAccess) {
+        e.preventDefault();
+        alert("🚫 No tienes permiso para acceder a este módulo.");
+        return;
+      }
+
+      if (!hasFeatureAccess) {
         e.preventDefault();
         setRestrictedFeature(label);
         setIsRestrictedModalOpen(true);
@@ -112,17 +119,20 @@ const Navigation = () => {
 
     return (
       <Link 
-        to={to} 
+        to={hasModuleAccess ? to : "#"} 
         onClick={handleClick}
         className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center gap-3 ${
           location.pathname === to 
             ? activeClass || "bg-slate-100 text-slate-900 shadow-sm" 
             : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-        }`}
+        } ${!hasModuleAccess ? "opacity-60 grayscale-[0.5] cursor-not-allowed" : ""}`}
       >
         <span className="text-lg">{emoji}</span>
         {label}
-        {planFeature && !hasPlanFeature(planFeature) && (
+        {!hasModuleAccess && (
+          <span className="ml-auto text-[10px]">🔒</span>
+        )}
+        {hasModuleAccess && planFeature && !hasFeatureAccess && (
           <span className="ml-auto text-[8px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-black uppercase tracking-tighter">🔒 PRO</span>
         )}
       </Link>
@@ -154,14 +164,18 @@ const Navigation = () => {
 
 
             
-            {(hasAccess("recursos_humanos") || hasAccess("analitica")) && (
-              <Link 
-                to="/admin" 
-                className="px-5 py-2 rounded-xl text-xs font-black bg-slate-900 text-white shadow-xl hover:bg-indigo-600 hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2 uppercase tracking-widest"
-              >
-                🛡️ Administración
-              </Link>
-            )}
+            <Link 
+              to={ (hasAccess("recursos_humanos") || hasAccess("analitica")) ? "/admin" : "#" }
+              onClick={(e) => {
+                if (!hasAccess("recursos_humanos") && !hasAccess("analitica")) {
+                  e.preventDefault();
+                  alert("🚫 No tienes permiso para acceder al panel de administración.");
+                }
+              }}
+              className={`px-5 py-2 rounded-xl text-xs font-black bg-slate-900 text-white shadow-xl hover:bg-indigo-600 hover:-translate-y-0.5 transition-all duration-300 flex items-center gap-2 uppercase tracking-widest ${(!hasAccess("recursos_humanos") && !hasAccess("analitica")) ? "opacity-60 grayscale-[0.5]" : ""}`}
+            >
+              🛡️ Administración
+            </Link>
 
             <button 
               onClick={handleLogoutClick}
@@ -213,15 +227,19 @@ const Navigation = () => {
                ❓
             </button>
 
-            {hasAccess("configuracion") && (
-              <Link 
-                to="/empresa" 
-                className="w-9 h-9 bg-slate-100 text-slate-900 rounded-lg shadow-md flex items-center justify-center text-lg font-black hover:bg-indigo-600 hover:text-white transition-all duration-300 ml-2"
-                title="Perfil de Empresa"
-              >
-                 🏢
-              </Link>
-            )}
+            <Link 
+              to={hasAccess("configuracion") ? "/empresa" : "#"}
+              onClick={(e) => {
+                if (!hasAccess("configuracion")) {
+                  e.preventDefault();
+                  alert("🚫 No tienes permiso para configurar los datos de la empresa.");
+                }
+              }}
+              className={`w-9 h-9 bg-slate-100 text-slate-900 rounded-lg shadow-md flex items-center justify-center text-lg font-black hover:bg-indigo-600 hover:text-white transition-all duration-300 ml-2 ${!hasAccess("configuracion") ? "opacity-60 grayscale" : ""}`}
+              title="Perfil de Empresa"
+            >
+                🏢
+            </Link>
 
             {localStorage.getItem('adminRole') === 'superadmin' && localStorage.getItem('adminEmpresaId') === '1' && (
               <button 
@@ -258,9 +276,13 @@ const Navigation = () => {
            <NavLink to="/mayoristas" label="Distribución Mayorista" emoji="🚛" module="mayoristas" activeClass="bg-sky-50 text-sky-700 border border-sky-100 shadow-sm" />
            <NavLink to="/facturacion-electronica" label="Factura Electrónica" emoji="⚡" module="facturas_venta" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA} activeClass="bg-amber-50 text-amber-700 border border-amber-100 shadow-sm" />
            
-           {(hasAccess("recursos_humanos") || hasAccess("analitica")) && (
-              <NavLink to="/admin" label="Administración Central" emoji="🛡️" activeClass="bg-slate-900 text-white shadow-lg" />
-           )}
+           <NavLink 
+             to="/admin" 
+             label="Administración Central" 
+             emoji="🛡️" 
+             module="recursos_humanos" // Se usará para la validación en NavLink
+             activeClass="bg-slate-900 text-white shadow-lg" 
+           />
            
            <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2">
               <button
@@ -273,15 +295,19 @@ const Navigation = () => {
               >
                  ❓ Soporte
               </button>
-              {hasAccess("configuracion") && (
-                <Link
-                  to="/empresa"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black flex items-center justify-center gap-2 uppercase tracking-widest"
-                >
-                  🏢 Perfil
-                </Link>
-              )}
+              <Link
+                to={hasAccess("configuracion") ? "/empresa" : "#"}
+                onClick={(e) => {
+                  if (!hasAccess("configuracion")) {
+                    e.preventDefault();
+                    alert("🚫 No tienes permiso para configurar los datos de la empresa.");
+                  }
+                  setIsMenuOpen(false);
+                }}
+                className={`px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black flex items-center justify-center gap-2 uppercase tracking-widest ${!hasAccess("configuracion") ? "opacity-50 grayscale" : ""}`}
+              >
+                🏢 Perfil
+              </Link>
               <button
                 onClick={handleLogoutClick}
                 className="px-4 py-3 bg-rose-50 text-rose-600 rounded-xl text-[10px] font-black flex items-center justify-center gap-2 uppercase tracking-widest col-span-2 border border-rose-100"

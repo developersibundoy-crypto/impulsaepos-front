@@ -12,6 +12,7 @@ const RegistroSaaS = () => {
     username: '',
     password: ''
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -26,20 +27,10 @@ const RegistroSaaS = () => {
 
     try {
       const { data } = await API.post('/auth/registro-empresa', formData);
-      alert(data.message);
-      
-      const loginRes = await API.post('/auth/login', {
-        username: formData.username,
-        password: formData.password
-      });
-
-      if (loginRes.data.success) {
-        localStorage.setItem('token', loginRes.data.token);
-        localStorage.setItem('adminToken', loginRes.data.token); 
-        localStorage.setItem('userName', loginRes.data.username);
-        localStorage.setItem('userRole', loginRes.data.role);
-        localStorage.setItem('empresa_id', loginRes.data.empresa_id);
-        navigate('/');
+      if (data.success) {
+        localStorage.clear(); // Limpiar cualquier residuo de sesiones anteriores
+        alert(data.message || '🎉 ¡Registro Exitoso! Tu empresa ha sido creada. Ahora puedes iniciar sesión con tus credenciales.');
+        navigate('/login');
       }
     } catch (err: any) {
       const msg = err.response?.data?.detalle || err.response?.data?.error || 'Error de conexión al servidor.';
@@ -119,7 +110,23 @@ const RegistroSaaS = () => {
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-[8px] font-medium text-indigo-500 uppercase tracking-widest ml-1 italic opacity-60">Clave</label>
-                            <input type="password" name="password" placeholder="••••" required onChange={handleChange} className="w-full px-4 py-3 bg-indigo-50/30 border border-indigo-100/50 rounded-xl font-medium text-xs text-indigo-700 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-100/20 transition-all" />
+                            <div className="relative">
+                                <input 
+                                    type={showPassword ? "text" : "password"} 
+                                    name="password" 
+                                    placeholder="••••" 
+                                    required 
+                                    onChange={handleChange} 
+                                    className="w-full px-4 py-3 bg-indigo-50/30 border border-indigo-100/50 rounded-xl font-medium text-xs text-indigo-700 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-100/20 transition-all" 
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                >
+                                    {showPassword ? "🙈" : "👁️"}
+                                </button>
+                            </div>
                         </div>
                     </div>
 

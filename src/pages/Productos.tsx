@@ -636,46 +636,67 @@ function Productos() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5 bg-white border border-slate-200 p-1 rounded-2xl shadow-sm">
-                {hasAccess("facturas_venta") && (
-                  <Link
-                    to="/facturas"
-                    className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center hover:text-blue-600 hover:bg-blue-50 transition-all group"
-                    title="Historial de Ventas"
-                  >
-                    <div className="flex flex-col gap-1">
-                      <span className="w-4 h-0.5 bg-current rounded-full"></span>
-                      <span className="w-4 h-0.5 bg-current rounded-full"></span>
-                      <span className="w-4 h-0.5 bg-current rounded-full"></span>
-                    </div>
-                  </Link>
-                )}
+                <Link
+                  to={hasAccess("facturas_venta") ? "/facturas" : "#"}
+                  onClick={(e) => {
+                    if (!hasAccess("facturas_venta")) {
+                      e.preventDefault();
+                      alert("🚫 No tienes permiso para ver el historial de ventas.");
+                    }
+                  }}
+                  className={`w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center hover:text-blue-600 hover:bg-blue-50 transition-all group ${!hasAccess("facturas_venta") ? "opacity-50 grayscale" : ""}`}
+                  title="Historial de Ventas"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="w-4 h-0.5 bg-current rounded-full"></span>
+                    <span className="w-4 h-0.5 bg-current rounded-full"></span>
+                    <span className="w-4 h-0.5 bg-current rounded-full"></span>
+                  </div>
+                </Link>
+
                 <div className="w-px h-6 bg-slate-100 mx-1"></div>
                 <div className="relative group/sep">
-                  <button className="h-10 px-4 bg-emerald-600 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-100">
+                  <button 
+                    onClick={() => {
+                      if (!hasAccess("separados")) {
+                        alert("🚫 No tienes permiso para acceder al módulo de separados.");
+                      }
+                    }}
+                    className={`h-10 px-4 bg-emerald-600 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-700 transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-100 ${!hasAccess("separados") ? "opacity-50 grayscale" : ""}`}
+                  >
                     <span className="text-lg">📋</span> SEPARADOS
                   </button>
                   <div className="absolute top-full left-0 mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-2xl opacity-0 invisible group-hover/sep:opacity-100 group-hover/sep:visible transition-all z-[60] p-2 overflow-hidden animate-in slide-in-from-top-2 duration-300">
                     <button
-                      onClick={() => setShowSeparadosHistoryModal(true)}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-[10px] font-semibold text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 rounded-xl transition-all uppercase text-left group/item"
+                      onClick={() => {
+                        if (hasAccess("separados")) {
+                          setShowSeparadosHistoryModal(true);
+                        } else {
+                          alert("🚫 No tienes permiso para ver el historial de separados.");
+                        }
+                      }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-[10px] font-semibold text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 rounded-xl transition-all uppercase text-left group/item ${!hasAccess("separados") ? "opacity-50" : ""}`}
                     >
                       <span className="text-base group-hover/item:scale-110 transition-transform">📋</span>
                       Historial y Abonos
                     </button>
                   </div>
                 </div>
-                {hasAccess("ingreso") && (
-                  <>
-                    <div className="w-px h-6 bg-slate-100 mx-1"></div>
-                    <button
-                      onClick={() => setShowIngresoModal(true)}
-                      className="h-10 px-4 bg-blue-600 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-blue-100"
-                      title="Ingresar Mercancía"
-                    >
-                      <span className="text-lg">📥</span> INGRESO
-                    </button>
-                  </>
-                )}
+
+                <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                <button
+                  onClick={() => {
+                    if (hasAccess("ingreso")) {
+                      setShowIngresoModal(true);
+                    } else {
+                      alert("🚫 No tienes permiso para realizar ingresos de mercancía.");
+                    }
+                  }}
+                  className={`h-10 px-4 bg-blue-600 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-blue-700 transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-blue-100 ${!hasAccess("ingreso") ? "opacity-50 grayscale" : ""}`}
+                  title="Ingresar Mercancía"
+                >
+                  <span className="text-lg">📥</span> INGRESO
+                </button>
               </div>
               <h2 className="text-xl lg:text-3xl text-slate-800 tracking-tight flex items-center gap-3 font-medium uppercase italic ml-2">
                 <span className="text-indigo-600">⚡</span> Terminal POS
@@ -970,6 +991,9 @@ function Productos() {
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
+                  if (!hasAccess("venta")) {
+                    return alert("🚫 No tienes permiso para realizar ventas.");
+                  }
                   if (!cajeroId) return alert("⚠️ Identificación Requerida: Seleccione al vendedor responsable.");
                   
                   // Validación previa de stock antes de abrir checkout

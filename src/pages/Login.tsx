@@ -306,27 +306,45 @@ const Login: React.FC = () => {
                     <div className="space-y-4 animate-in slide-in-from-right-4 duration-500">
                         <div className="space-y-1">
                             <label className="text-[9px] font-medium text-slate-400 uppercase tracking-widest ml-1">Nueva Contraseña</label>
-                            <input
-                                type="password"
-                                name="password"
-                                placeholder="••••••••"
-                                value={formData.password}
-                                onChange={handleChange}
-                                required
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-100/20 outline-none transition-all font-medium text-xs"
-                            />
+                            <div className="relative group">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    name="password"
+                                    placeholder="••••••••"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    required
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-100/20 outline-none transition-all font-medium text-xs"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                >
+                                    {showPassword ? "🙈" : "👁️"}
+                                </button>
+                            </div>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[9px] font-medium text-slate-400 uppercase tracking-widest ml-1">Confirmar Contraseña</label>
-                            <input
-                                type="password"
-                                name="confirmPassword"
-                                placeholder="••••••••"
-                                value={recoverData.confirmPassword}
-                                onChange={handleRecoverChange}
-                                required
-                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-100/20 outline-none transition-all font-medium text-xs"
-                            />
+                            <div className="relative group">
+                                <input
+                                    type={showPassword ? "text" : "password"}
+                                    name="confirmPassword"
+                                    placeholder="••••••••"
+                                    value={recoverData.confirmPassword}
+                                    onChange={handleRecoverChange}
+                                    required
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:bg-white focus:ring-4 focus:ring-indigo-100/20 outline-none transition-all font-medium text-xs"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-indigo-600 transition-colors"
+                                >
+                                    {showPassword ? "🙈" : "👁️"}
+                                </button>
+                            </div>
                         </div>
                     </div>
                   )}
