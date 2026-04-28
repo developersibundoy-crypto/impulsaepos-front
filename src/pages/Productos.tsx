@@ -14,6 +14,7 @@ import Separados from "./Separados";
 interface CartItem extends Omit<Producto, 'id'> {
   id: number;
   qty: number;
+  descuento: number;
 }
 
 interface Tab {
@@ -313,7 +314,7 @@ function Productos() {
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
-    
+
     const now = Date.now();
     const isFast = now - lastKeystrokeTime.current < 50;
     lastKeystrokeTime.current = now;
@@ -322,8 +323,8 @@ function Productos() {
 
     if (isFast && val.length > 2) {
       scanTimeoutRef.current = setTimeout(() => {
-        handleSearchKeyPress({ key: 'Enter', preventDefault: () => {} } as any);
-      }, 150); 
+        handleSearchKeyPress({ key: 'Enter', preventDefault: () => { } } as any);
+      }, 150);
     } else {
       scanTimeoutRef.current = setTimeout(() => {
         fetchInventory(1, val);
@@ -344,7 +345,13 @@ function Productos() {
         // Si el producto está en la página actual y su precio es distinto al del carrito
         if (catalogItem && catalogItem.precio_venta !== item.precio_venta) {
           hasChanges = true;
-          return { ...item, precio_venta: catalogItem.precio_venta, nombre: catalogItem.nombre };
+          const newPrice = catalogItem.precio_venta;
+          return {
+            ...item,
+            precio_venta: newPrice,
+            nombre: catalogItem.nombre,
+            descuento: Math.min(item.descuento || 0, 100)
+          };
         }
         return item;
       });
@@ -376,7 +383,7 @@ function Productos() {
       if (exist) {
         setCarrito(carrito.map((x: any) => x.id === producto.id ? { ...exist, qty: exist.qty + 1 } : x));
       } else {
-        setCarrito([...carrito, { ...producto, qty: 1 }]);
+        setCarrito([...carrito, { ...producto, qty: 1, descuento: 0 }]);
       }
       return;
     }
@@ -399,7 +406,7 @@ function Productos() {
     if (exist) {
       setCarrito(carrito.map((x: any) => x.id === producto.id ? { ...exist, qty: exist.qty + 1 } : x));
     } else {
-      setCarrito([...carrito, { ...producto, qty: 1 }]);
+      setCarrito([...carrito, { ...producto, qty: 1, descuento: 0 }]);
     }
   };
 
@@ -454,6 +461,24 @@ function Productos() {
     setCarrito(carrito.map((x: any) => x.id === id ? { ...x, qty: qty } : x));
   };
 
+  const actualizarDescuento = (id: number, val: string) => {
+    if (val === "") {
+      setCarrito(carrito.map((x: any) => x.id === id ? { ...x, descuento: 0 } : x));
+      return;
+    }
+
+    const desc = parseFloat(val);
+    if (isNaN(desc) || desc < 0) return;
+
+    if (desc > 100) {
+      alert("⚠️ El descuento no puede ser mayor al 100%.");
+      setCarrito(carrito.map((x: any) => x.id === id ? { ...x, descuento: 100 } : x));
+      return;
+    }
+
+    setCarrito(carrito.map((x: any) => x.id === id ? { ...x, descuento: desc } : x));
+  };
+
   const vaciarCarrito = () => {
     if (window.confirm("¿Seguro que deseas vaciar el carrito actual?")) setCarrito([]);
   };
@@ -463,7 +488,7 @@ function Productos() {
       if (search.trim() !== '') {
         e.preventDefault();
         const barcode = search.trim();
-        
+
         // 1. Búsqueda local
         const matchedProduct = productos.find(p =>
           p.referencia && p.referencia.trim().toLowerCase() === barcode.toLowerCase()
@@ -496,10 +521,14 @@ function Productos() {
     }
   };
 
-  const granTotal = carrito.reduce((a: number, c: any) => a + (c.precio_venta * c.qty), 0);
+  const granTotal = carrito.reduce((a: number, c: CartItem) => {
+    const discountedPrice = Math.round(c.precio_venta * (1 - (c.descuento || 0) / 100));
+    return a + (discountedPrice * c.qty);
+  }, 0);
   const totalItems = carrito.reduce((a: number, c: any) => a + (c.qty || 0), 0);
   const totalIva = carrito.reduce((a: number, c: CartItem) => {
-    const totalItem = c.precio_venta * c.qty;
+    const discountedPrice = Math.round(c.precio_venta * (1 - (c.descuento || 0) / 100));
+    const totalItem = discountedPrice * c.qty;
     const ivaPerc = parseFloat(String(c.iva_porcentaje ?? 0));
     const base = totalItem / (1 + ivaPerc / 100);
     return a + (totalItem - base);
@@ -560,7 +589,13 @@ function Productos() {
     setIsProcessing(true);
     try {
       const response = await API.post("/ventas", {
-        items: carrito,
+        items: carrito.map(i => {
+          const discountedPrice = Math.round(i.precio_venta * (1 - (i.descuento || 0) / 100));
+          return {
+            ...i,
+            precio_venta: discountedPrice
+          };
+        }),
         metodoPago,
         efectivoEntregado: metodoPago === "Mixto" ? efMixto : cashPaga,
         transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Tarjeta" ? granTotal : 0),
@@ -571,7 +606,13 @@ function Productos() {
         iva: totalIva
       });
       setFacturaIdImpresion(response.data.factura_id);
-      setItemsParaRecibo([...carrito]);
+      setItemsParaRecibo(carrito.map(i => {
+        const discountedPrice = Math.round(i.precio_venta * (1 - (i.descuento || 0) / 100));
+        return {
+          ...i,
+          precio_unitario: discountedPrice
+        };
+      }));
 
 
 
@@ -634,7 +675,8 @@ function Productos() {
     // 3. Ítems
     const itemsStr = itemsParaRecibo.map((i: CartItem) => {
       const qty = i.qty || 1;
-      return `• ${i.nombre} (x${qty})\n  Subtotal: ${formatCOP(i.precio_venta * qty)}`;
+      const discountedPrice = Math.round(i.precio_venta * (1 - (i.descuento || 0) / 100));
+      return `• ${i.nombre} (x${qty})\n  Subtotal: ${formatCOP(discountedPrice * qty)}${i.descuento > 0 ? ` (Desc: ${i.descuento}%)` : ''}`;
     }).join('\n');
 
     // 4. Totales
@@ -959,41 +1001,52 @@ function Productos() {
                 >
                   {/* Name & ID - Left side */}
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-[11px] text-slate-700 uppercase truncate leading-tight">{item.nombre}</h4>
-                    <p className="text-[11px] font-medium text-slate-800 uppercase tracking-tighter mt-0.5">REF: {item.referencia || 'NO REF'}</p>
+                    <h4 className="text-[14px] font-medium text-slate-900 uppercase truncate leading-tight">{item.nombre}</h4>
+                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter mt-1">REF: {item.referencia || 'NO REF'}</p>
                     {/* Alerta de Stock Real-Time */}
                     {!item.es_servicio && (!empresa.permitir_venta_negativa || !item.permitir_venta_negativa) && (item.qty > (item.cantidad - (getCommittedQty(item.id) - item.qty))) && (
-                      <div className="text-[8px] font-black text-rose-600 bg-rose-50 px-1.5 py-1 rounded-lg inline-block mt-2 animate-pulse border border-rose-100 uppercase tracking-tighter shadow-sm">
+                      <div className="text-[8px] font-medium text-rose-600 bg-rose-50 px-1.5 py-1 rounded-lg inline-block mt-2 animate-pulse border border-rose-100 uppercase tracking-tighter shadow-sm">
                         ⚠️ Agotado (Stock: {Math.max(0, item.cantidad - (getCommittedQty(item.id) - item.qty))})
                       </div>
                     )}
                   </div>
 
-                  {/* Quantity Controls - Center */}
-                  <div className="flex items-center bg-slate-50 rounded-2xl p-1 border border-slate-100 shadow-inner shrink-0">
-                    <button onClick={() => removerDelCarrito(item)} className="w-8 h-8 flex items-center justify-center text-lg text-slate-400 bg-white hover:text-rose-600 rounded-xl transition-all shadow-sm active:scale-90 select-none font-bold">－</button>
-                    <input
-                      type="number"
-                      value={item.qty === 0 ? "" : item.qty}
-                      onChange={(e) => actualizarCantidad(item.id, e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "+" || e.key === "Add") {
-                          e.preventDefault();
-                          agregarAlCarrito(item);
-                        } else if (e.key === "-" || e.key === "Subtract") {
-                          e.preventDefault();
-                          removerDelCarrito(item);
-                        }
-                      }}
-                      className="w-10 text-center text-sm bg-transparent outline-none text-slate-800 font-bold"
-                    />
-                    <button onClick={() => agregarAlCarrito(item)} className="w-8 h-8 flex items-center justify-center text-lg text-slate-400 bg-white hover:text-indigo-600 rounded-xl transition-all shadow-sm active:scale-90 select-none font-bold">＋</button>
+                  {/* Controles Apilados: Cantidad y Descuento */}
+                  <div className="flex flex-col gap-1 items-end shrink-0">
+                    {/* Cantidad */}
+                    <div className="flex items-center bg-slate-50 rounded-xl p-0.5 border border-slate-100 shadow-inner">
+                      <button onClick={() => removerDelCarrito(item)} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-rose-600 transition-colors text-xs">－</button>
+                      <input
+                        type="number"
+                        value={item.qty === 0 ? "" : item.qty}
+                        onChange={(e) => actualizarCantidad(item.id, e.target.value)}
+                        className="w-8 text-center text-[10px] bg-transparent outline-none text-slate-800 font-medium no-spinner"
+                      />
+                      <button onClick={() => agregarAlCarrito(item)} className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-indigo-600 transition-colors text-xs">＋</button>
+                    </div>
+                    {/* Descuento */}
+                    <div className="flex items-center gap-1 px-2 py-0.5 bg-rose-50/50 rounded-lg border border-rose-100/50 group-hover:bg-rose-50 transition-colors">
+                      <label className="text-[7px] font-medium text-rose-500 uppercase tracking-widest">Desc %:</label>
+                      <input
+                        type="number"
+                        value={item.descuento === 0 ? "" : item.descuento}
+                        onChange={(e) => actualizarDescuento(item.id, e.target.value)}
+                        className="w-10 bg-transparent text-[9px] font-medium text-rose-600 outline-none no-spinner text-center"
+                        placeholder="0"
+                      />
+                    </div>
                   </div>
 
-                  <div className="text-right shrink-0 min-w-[70px]">
-                    <div className="text-xs text-slate-900 italic font-medium">{formatCOP(item.precio_venta * item.qty)}</div>
+
+                  <div className="text-right shrink-0 min-w-[80px]">
+                    <div className="text-xs text-slate-900 italic font-medium">
+                      {formatCOP(Math.round(item.precio_venta * (1 - (item.descuento || 0) / 100)) * item.qty)}
+                    </div>
                     <div className="text-[8px] text-indigo-400 uppercase tracking-tighter">
-                      {formatCOP(item.precio_venta)}/u
+                      {item.descuento > 0 ? (
+                        <span className="text-rose-500 line-through mr-1">{formatCOP(item.precio_venta)}</span>
+                      ) : null}
+                      {formatCOP(Math.round(item.precio_venta * (1 - (item.descuento || 0) / 100)))}/u
                       {parseFloat(String(item.iva_porcentaje ?? 0)) > 0 && ` (+${item.iva_porcentaje}%)`}
                     </div>
                   </div>
@@ -1552,7 +1605,7 @@ function Productos() {
                         id: p.id,
                         nombre: p.nombre,
                         qty: p.qty,
-                        precio_venta: p.precio_venta
+                        precio_venta: Math.round(p.precio_venta * (1 - (p.descuento || 0) / 100))
                       })),
                       total: granTotal,
                       abono_inicial: parseFloat(abonoInicial),

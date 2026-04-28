@@ -25,14 +25,27 @@ function Reportes() {
 
   const [categoriasTienda, setCategoriasTienda] = useState<string[]>([]);
 
+  const fetchSoldCategories = () => {
+    const params = new URLSearchParams();
+    if (filtroCajero) params.append("cajeroId", filtroCajero);
+    if (filtroTipo) params.append("es_servicio", filtroTipo);
+    if (startDate) params.append("startDate", startDate);
+    if (endDate) params.append("endDate", endDate);
+
+    API.get(`/reportes/categorias-vendidas?${params.toString()}`).then(res => {
+      const cats = res.data;
+      setCategoriasTienda(cats);
+      // Si la categoría seleccionada ya no tiene ventas en este rango/cajero, la reseteamos
+      if (filtroCategoria && !cats.includes(filtroCategoria)) {
+        setFiltroCategoria("");
+      }
+    }).catch(console.error);
+  };
+
   useEffect(() => {
     window.scrollTo(0, 0);
     API.get("/cajeros").then(res => setCajeros(res.data)).catch(console.error);
-    API.get("/productos").then(res => {
-      const dataArr = Array.isArray(res.data) ? res.data : (res.data.data || []);
-      const uniqueCats = Array.from(new Set(dataArr.map((p: any) => p.categoria))).filter(Boolean);
-      setCategoriasTienda(uniqueCats as string[]);
-    }).catch(console.error);
+    fetchSoldCategories();
   }, []);
 
   const [paginatedProducts, setPaginatedProducts] = useState<any[]>([]);
@@ -80,6 +93,7 @@ function Reportes() {
       });
     
     fetchDetailedReport(1);
+    fetchSoldCategories();
   }, [filtroCajero, filtroCategoria, filtroTipo, startDate, endDate]);
 
   const handleExportVentasExcel = async () => {
