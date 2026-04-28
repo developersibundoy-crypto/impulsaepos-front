@@ -21,7 +21,7 @@ FROM nginx:alpine
 # Copiamos el build de la etapa anterior
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copiamos la configuración de Nginx (asegúrate de tener este archivo)
+# Copiamos la configuración de Nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
