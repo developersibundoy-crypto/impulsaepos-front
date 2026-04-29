@@ -185,21 +185,27 @@ const Navigation = () => {
             </button>
 
             {sesion && (
-              <div className="flex items-center gap-1 ml-2">
-                <button 
-                  onClick={() => setMovType('Ingreso')}
-                  className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 flex items-center justify-center text-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
-                  title="Ingreso de Dinero"
-                >
-                  📥
-                </button>
-                <button 
-                  onClick={() => setMovType('Salida')}
-                  className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 flex items-center justify-center text-lg hover:bg-rose-600 hover:text-white transition-all shadow-sm"
-                  title="Salida de Dinero"
-                >
-                  📤
-                </button>
+              <div className="flex items-center gap-3 ml-2 border-l border-slate-200 pl-3">
+                <div className="hidden md:flex flex-col items-end">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Base Inicial</span>
+                  <span className="text-sm font-black text-indigo-600 leading-none">{new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(sesion.base_caja || 0)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button 
+                    onClick={() => setMovType('Ingreso')}
+                    className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 flex items-center justify-center text-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
+                    title="Ingreso de Dinero"
+                  >
+                    📥
+                  </button>
+                  <button 
+                    onClick={() => setMovType('Salida')}
+                    className="w-10 h-10 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 flex items-center justify-center text-lg hover:bg-rose-600 hover:text-white transition-all shadow-sm"
+                    title="Salida de Dinero"
+                  >
+                    📤
+                  </button>
+                </div>
               </div>
             )}
 
