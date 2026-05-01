@@ -85,6 +85,7 @@ function VentasMayoristas() {
   const [scanError, setScanError] = useState(false);
   const [facturaIdImpresion, setFacturaIdImpresion] = useState<number | null>(null);
   const [itemsParaRecibo, setItemsParaRecibo] = useState<any[]>([]);
+  const [totalesRecibo, setTotalesRecibo] = useState<any>(null);
   const trMixtoRef = useRef<HTMLInputElement>(null);
   const successTimeRef = useRef(0);
   const [phoneWS, setPhoneWS] = useState("");
@@ -407,6 +408,7 @@ function VentasMayoristas() {
     setPagoTransferenciaMixto("");
     setFacturaIdImpresion(null);
     setItemsParaRecibo([]);
+    setTotalesRecibo(null);
 
     if (activeTabId !== 1) {
       const newTabs = tabs.filter((t: any) => t.id !== activeTabId);
@@ -455,6 +457,15 @@ function VentasMayoristas() {
       });
       setFacturaIdImpresion(response.data.factura_id);
       setItemsParaRecibo([...carrito]);
+      setTotalesRecibo({
+        granTotal,
+        totalIva,
+        efectivoRecibido: metodoPago === "Mixto" ? efMixto : cashPaga,
+        vuelto: vuelto > 0 ? vuelto : 0,
+        pagoEfectivoMixto: metodoPago === "Mixto" ? efMixto : undefined,
+        pagoTransferenciaMixto: metodoPago === "Mixto" ? trMixto : undefined,
+        metodoPago
+      });
 
       const clientObj = clientes.find(c => c.id === parseInt(clienteId));
       setPhoneWS(clientObj?.telefono?.replace(/\D/g, '') || "");
@@ -579,11 +590,15 @@ function VentasMayoristas() {
       return `• ${i.nombre} (x${qty})\n  Subtotal: ${formatCOP(unitPrice * qty)}`;
     }).join('\n');
 
+    const t_granTotal = totalesRecibo?.granTotal || 0;
+    const t_totalIva = totalesRecibo?.totalIva || 0;
+    const t_metodo = totalesRecibo?.metodoPago || metodoPago;
+
     const totalsStr = `\n--------------------------------\n` +
-      `Subtotal: ${formatCOP(granTotal - totalIva)}\n` +
-      (totalIva > 0 ? `IVA: ${formatCOP(totalIva)}\n` : "") +
-      `💰 *TOTAL LOTE: ${formatCOP(granTotal)}*\n` +
-      `Método: ${metodoPago}\n`;
+      `Subtotal: ${formatCOP(t_granTotal - t_totalIva)}\n` +
+      (t_totalIva > 0 ? `IVA: ${formatCOP(t_totalIva)}\n` : "") +
+      `💰 *TOTAL LOTE: ${formatCOP(t_granTotal)}*\n` +
+      `Método: ${t_metodo}\n`;
 
     const footer = `--------------------------------\n` +
       `🙏 ¡Gracias por su confianza comercial!\n` +
@@ -597,7 +612,7 @@ function VentasMayoristas() {
       waUrl = `https://api.whatsapp.com/send?phone=${fullNum}&text=${encodeURIComponent(mensaje)}`;
     }
     window.open(waUrl, '_blank');
-  }, [empresa, facturaIdImpresion, clienteSeleccionado, cajeroSeleccionado, itemsParaRecibo, granTotal, totalIva, metodoPago]);
+  }, [empresa, facturaIdImpresion, clienteSeleccionado, cajeroSeleccionado, itemsParaRecibo, totalesRecibo, metodoPago]);
 
   const compartirWhatsApp = () => {
     if (!facturaIdImpresion) return;
@@ -1273,17 +1288,17 @@ function VentasMayoristas() {
             fecha={new Date()}
             cliente={clienteSeleccionado.nombre}
             cajero={cajeroSeleccionado.nombre}
-            metodoPago={metodoPago}
+            metodoPago={totalesRecibo?.metodoPago || metodoPago}
             items={itemsParaRecibo.map((c: any) => ({
               ...c,
               precio_unitario: c.precio_venta * (1 - (c.descuento || 0) / 100)
             }))}
-            total={granTotal}
-            iva={totalIva}
-            efectivoRecibido={metodoPago === "Mixto" ? efMixto : cashPaga}
-            vuelto={vuelto}
-            pagoEfectivoMixto={metodoPago === "Mixto" ? efMixto : undefined}
-            pagoTransferenciaMixto={metodoPago === "Mixto" ? trMixto : undefined}
+            total={totalesRecibo?.granTotal || 0}
+            iva={totalesRecibo?.totalIva || 0}
+            efectivoRecibido={totalesRecibo?.efectivoRecibido}
+            vuelto={totalesRecibo?.vuelto}
+            pagoEfectivoMixto={totalesRecibo?.pagoEfectivoMixto}
+            pagoTransferenciaMixto={totalesRecibo?.pagoTransferenciaMixto}
           />
         )}
       </div>

@@ -75,6 +75,7 @@ function FacturacionElectronica() {
   const [ventaExitosa, setVentaExitosa] = useState(false);
   const [feExitoData, setFeExitoData] = useState<any>(null);
   const [itemsParaRecibo, setItemsParaRecibo] = useState<any[]>([]);
+  const [totalesRecibo, setTotalesRecibo] = useState<any>(null);
   const [phoneWS, setPhoneWS] = useState("");
   const [showQuickCustomerModal, setShowQuickCustomerModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
@@ -301,6 +302,15 @@ function FacturacionElectronica() {
       });
       setFeExitoData(res.data);
       setItemsParaRecibo([...carrito]);
+      setTotalesRecibo({
+        granTotal,
+        totalIva,
+        efectivoRecibido: metodoPago === "Mixto" ? efMixto : (metodoPago === "Efectivo" ? cashPaga : 0),
+        vuelto: (metodoPago === "Efectivo" && vuelto > 0) ? vuelto : 0,
+        pagoEfectivoMixto: metodoPago === "Mixto" ? efMixto : undefined,
+        pagoTransferenciaMixto: metodoPago === "Mixto" ? trMixto : undefined,
+        metodoPago
+      });
       setVentaExitosa(true);
       setShowCheckout(false);
       setCarrito([]);
@@ -321,6 +331,7 @@ function FacturacionElectronica() {
     setPagoTransferenciaMixto("");
     setFeExitoData(null);
     setItemsParaRecibo([]);
+    setTotalesRecibo(null);
   };
 
   const compartirWhatsApp = () => {
@@ -347,11 +358,15 @@ function FacturacionElectronica() {
     }).join('\n');
 
     // 4. Totales
+    const t_granTotal = totalesRecibo?.granTotal || 0;
+    const t_totalIva = totalesRecibo?.totalIva || 0;
+    const t_metodoPago = totalesRecibo?.metodoPago || metodoPago;
+
     const totalsStr = `\n--------------------------------\n` +
-      `Subtotal: ${formatCOP(granTotal - totalIva)}\n` +
-      (totalIva > 0 ? `IVA: ${formatCOP(totalIva)}\n` : "") +
-      `💰 *TOTAL A PAGAR: ${formatCOP(granTotal)}*\n` +
-      `Método: ${metodoPago}\n`;
+      `Subtotal: ${formatCOP(t_granTotal - t_totalIva)}\n` +
+      (t_totalIva > 0 ? `IVA: ${formatCOP(t_totalIva)}\n` : "") +
+      `💰 *TOTAL A PAGAR: ${formatCOP(t_granTotal)}*\n` +
+      `Método: ${t_metodoPago}\n`;
 
     // 5. Pie de Página
     const footer = `--------------------------------\n` +
@@ -737,12 +752,14 @@ function FacturacionElectronica() {
             fecha={new Date()}
             cliente={clientes.find(c => c.id.toString() === clienteId.toString())?.nombre || "Cliente"}
             cajero={cajeros.find(c => c.id.toString() === cajeroId.toString())?.nombre || "Cajero"}
-            metodoPago={metodoPago}
+            metodoPago={totalesRecibo?.metodoPago || metodoPago}
             items={itemsParaRecibo}
-            total={granTotal}
-            iva={totalIva}
-            pagoEfectivoMixto={metodoPago === "Mixto" ? efMixto : undefined}
-            pagoTransferenciaMixto={metodoPago === "Mixto" ? trMixto : undefined}
+            total={totalesRecibo?.granTotal || 0}
+            iva={totalesRecibo?.totalIva || 0}
+            efectivoRecibido={totalesRecibo?.efectivoRecibido}
+            vuelto={totalesRecibo?.vuelto}
+            pagoEfectivoMixto={totalesRecibo?.pagoEfectivoMixto}
+            pagoTransferenciaMixto={totalesRecibo?.pagoTransferenciaMixto}
           />
         )}
       </div>

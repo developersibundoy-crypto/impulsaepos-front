@@ -42,6 +42,7 @@ function IngresoProductos() {
   const [categoriasDB, setCategoriasDB] = useState<string[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSugerencias, setShowSugerencias] = useState(false);
+  const [editIndex, setEditIndex] = useState<number | null>(null);
 
   // Draft System State
   const [currentDraftId, setCurrentDraftId] = useState<number | null>(null);
@@ -237,6 +238,26 @@ function IngresoProductos() {
     });
   };
 
+  const handleEditItem = (index: number) => {
+    const p = productosIngresados[index];
+    setFormData({
+      referencia: p.referencia || "",
+      nombre: p.nombre,
+      categoria: categoriasDB.includes(p.categoria) ? p.categoria : "Otra",
+      nuevaCategoria: categoriasDB.includes(p.categoria) ? "" : p.categoria,
+      cantidad: p.cantidad,
+      precio_compra: p.precio_compra.toString(),
+      porcentaje_ganancia: p.porcentaje_ganancia.toString(),
+      precio_venta: p.precio_venta.toString(),
+      es_servicio: p.es_servicio || false,
+      permitir_venta_negativa: p.permitir_venta_negativa !== false,
+      iva_porcentaje: p.iva_porcentaje || 0,
+      fecha_vencimiento: p.fecha_vencimiento ? p.fecha_vencimiento.split('T')[0] : "",
+    });
+    setEditIndex(index);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleAddToList = (e: React.FormEvent) => {
     e.preventDefault();
     let categoriaFinal = formData.categoria;
@@ -274,29 +295,44 @@ function IngresoProductos() {
       cantidad_inyectada: 0
     };
 
-    const existingIndex = productosIngresados.findIndex(p =>
-      (p.referencia && p.referencia === nuevoProducto.referencia) ||
-      (!p.referencia && p.nombre === nuevoProducto.nombre)
-    );
-
-    if (existingIndex !== -1) {
-      // Actualización inmutable: fusionamos el nuevo registro con el existente sumando cantidades
+    if (editIndex !== null) {
       setProductosIngresados(prev => {
         const updatedList = [...prev];
-        const existingItem = updatedList[existingIndex];
-        
-        updatedList[existingIndex] = {
+        const existingItem = updatedList[editIndex];
+        updatedList[editIndex] = {
           ...existingItem,
-          ...nuevoProducto, // Los precios y metadata nuevos sobrescriben los anteriores
-          cantidad: (Number(existingItem.cantidad) || 0) + nuevoProducto.cantidad,
-          inyectado: existingItem.inyectado, // Mantenemos el flag de inyección original
+          ...nuevoProducto,
+          inyectado: existingItem.inyectado,
           cantidad_inyectada: existingItem.cantidad_inyectada || 0
         };
         return updatedList;
       });
+      setEditIndex(null);
     } else {
-      // Agregar al inicio de la lista (Estado inmutable y funcional)
-      setProductosIngresados(prev => [nuevoProducto, ...prev]);
+      const existingIndex = productosIngresados.findIndex(p =>
+        (p.referencia && p.referencia === nuevoProducto.referencia) ||
+        (!p.referencia && p.nombre === nuevoProducto.nombre)
+      );
+
+      if (existingIndex !== -1) {
+        // Actualización inmutable: fusionamos el nuevo registro con el existente sumando cantidades
+        setProductosIngresados(prev => {
+          const updatedList = [...prev];
+          const existingItem = updatedList[existingIndex];
+          
+          updatedList[existingIndex] = {
+            ...existingItem,
+            ...nuevoProducto, // Los precios y metadata nuevos sobrescriben los anteriores
+            cantidad: (Number(existingItem.cantidad) || 0) + nuevoProducto.cantidad,
+            inyectado: existingItem.inyectado, // Mantenemos el flag de inyección original
+            cantidad_inyectada: existingItem.cantidad_inyectada || 0
+          };
+          return updatedList;
+        });
+      } else {
+        // Agregar al inicio de la lista (Estado inmutable y funcional)
+        setProductosIngresados(prev => [nuevoProducto, ...prev]);
+      }
     }
 
     setFormData({
@@ -832,12 +868,32 @@ function IngresoProductos() {
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl font-black shadow-xl shadow-blue-200 hover:from-blue-500 hover:to-blue-600 hover:-translate-y-1 active:scale-[0.98] transition-all uppercase tracking-[0.1em] text-[11px] flex items-center justify-center gap-3 group border border-blue-500"
-            >
-              <span className="text-xl group-hover:rotate-12 transition-transform">➕</span> Cargar al Lote Temporal
-            </button>
+            <div className="space-y-3">
+              <button
+                type="submit"
+                className={`w-full py-3.5 ${editIndex !== null ? 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-amber-200 hover:from-amber-400 hover:to-amber-500 border-amber-500' : 'bg-gradient-to-r from-blue-600 to-blue-700 shadow-blue-200 hover:from-blue-500 hover:to-blue-600 border-blue-500'} text-white rounded-2xl font-black shadow-xl hover:-translate-y-1 active:scale-[0.98] transition-all uppercase tracking-[0.1em] text-[11px] flex items-center justify-center gap-3 group border`}
+              >
+                <span className="text-xl group-hover:rotate-12 transition-transform">{editIndex !== null ? '📝' : '➕'}</span> 
+                {editIndex !== null ? 'Guardar Cambios' : 'Cargar al Lote Temporal'}
+              </button>
+              {editIndex !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditIndex(null);
+                    setFormData({
+                      referencia: "", nombre: "", categoria: "", nuevaCategoria: "",
+                      cantidad: 1, precio_compra: "", porcentaje_ganancia: 60,
+                      precio_venta: "", es_servicio: false, permitir_venta_negativa: true,
+                      iva_porcentaje: 0, fecha_vencimiento: "",
+                    });
+                  }}
+                  className="w-full py-2.5 bg-slate-100 text-slate-500 rounded-2xl font-bold uppercase tracking-widest text-[9px] hover:bg-slate-200 transition-all"
+                >
+                  Cancelar Edición
+                </button>
+              )}
+            </div>
           </form>
         </div>
       </div>
@@ -867,7 +923,12 @@ function IngresoProductos() {
           ) : (
             <div className="space-y-2.5">
               {productosIngresados.map((p, index) => (
-                <div key={index} className="bg-white p-5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:shadow-2xl hover:shadow-indigo-100/50 transition-all relative group/item animate-in fade-in slide-in-from-right-4 duration-500" style={{ animationDelay: `${index * 50}ms` }}>
+                <div 
+                  key={index} 
+                  onClick={() => handleEditItem(index)}
+                  className={`bg-white p-5 rounded-xl border ${editIndex === index ? 'border-amber-400 shadow-amber-100/50' : 'border-slate-200 hover:border-indigo-300 hover:shadow-indigo-100/50'} hover:shadow-2xl transition-all relative group/item animate-in fade-in slide-in-from-right-4 duration-500 cursor-pointer`} 
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
                   <div className="flex flex-col gap-4">
                     {/* Header: Name and Remove Action */}
                     <div className="flex justify-between items-start gap-4 ">
@@ -897,7 +958,7 @@ function IngresoProductos() {
                         </div>
                       </div>
                       <button
-                        onClick={() => removeItem(index)}
+                        onClick={(e) => { e.stopPropagation(); removeItem(index); }}
                         className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all flex items-center justify-center text-lg font-black border border-transparent hover:border-rose-100 shadow-sm shrink-0 -mt-2"
                         title="Eliminar de la lista"
                       >
@@ -910,6 +971,9 @@ function IngresoProductos() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="bg-indigo-600 text-white text-[8px] font-black px-2.5 py-1.5 rounded-xl shadow-lg shadow-indigo-100 uppercase tracking-widest">
                           CANTIDAD: {p.cantidad}
+                        </span>
+                        <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-100">
+                          UNIDAD: {formatCOP(p.precio_venta)}
                         </span>
                         <span className="text-[7px] font-black text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-full uppercase tracking-widest border border-indigo-100/50">
                           {p.categoria}

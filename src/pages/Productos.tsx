@@ -105,6 +105,7 @@ function Productos() {
   const [scanError, setScanError] = useState(false);
   const [facturaIdImpresion, setFacturaIdImpresion] = useState<number | null>(null);
   const [itemsParaRecibo, setItemsParaRecibo] = useState<CartItem[]>([]);
+  const [totalesRecibo, setTotalesRecibo] = useState<any>(null);
   const trMixtoRef = useRef<HTMLInputElement>(null);
 
   // Quick Customer Registration
@@ -229,6 +230,7 @@ function Productos() {
       ));
     }
     setItemsParaRecibo([]);
+    setTotalesRecibo(null);
     setPagoCliente("");
     setPagoTarjeta("");
     setPagoEfectivoMixto("");
@@ -613,8 +615,15 @@ function Productos() {
           precio_unitario: discountedPrice
         };
       }));
-
-
+      setTotalesRecibo({
+        granTotal,
+        totalIva,
+        efectivoRecibido: metodoPago === "Mixto" ? efMixto : cashPaga,
+        vuelto: metodoPago === "Efectivo" && vuelto > 0 ? vuelto : 0,
+        pagoEfectivoMixto: metodoPago === "Mixto" ? efMixto : undefined,
+        pagoTransferenciaMixto: metodoPago === "Mixto" ? trMixto : undefined,
+        metodoPago
+      });
 
       setVentaExitosa(true);
       // Limpiar tab actual inmediatamente tras éxito
@@ -680,11 +689,15 @@ function Productos() {
     }).join('\n');
 
     // 4. Totales
+    const t_granTotal = totalesRecibo?.granTotal || 0;
+    const t_totalIva = totalesRecibo?.totalIva || 0;
+    const t_metodo = totalesRecibo?.metodoPago || metodoPago;
+
     const totalsStr = `\n--------------------------------\n` +
-      `Subtotal: ${formatCOP(granTotal - totalIva)}\n` +
-      (totalIva > 0 ? `IVA: ${formatCOP(totalIva)}\n` : "") +
-      `💰 *TOTAL A PAGAR: ${formatCOP(granTotal)}*\n` +
-      `Método: ${metodoPago}\n`;
+      `Subtotal: ${formatCOP(t_granTotal - t_totalIva)}\n` +
+      (t_totalIva > 0 ? `IVA: ${formatCOP(t_totalIva)}\n` : "") +
+      `💰 *TOTAL A PAGAR: ${formatCOP(t_granTotal)}*\n` +
+      `Método: ${t_metodo}\n`;
 
     // 5. Pie de Página
     const footer = `--------------------------------\n` +
@@ -1390,14 +1403,14 @@ function Productos() {
             fecha={new Date()}
             cliente={clienteSearch}
             cajero={cajeroSeleccionado?.nombre || "Vendedor"}
-            metodoPago={metodoPago}
+            metodoPago={totalesRecibo?.metodoPago || metodoPago}
             items={itemsParaRecibo}
-            total={granTotal}
-            iva={totalIva}
-            efectivoRecibido={cashPaga}
-            vuelto={vuelto}
-            pagoEfectivoMixto={metodoPago === "Mixto" ? efMixto : undefined}
-            pagoTransferenciaMixto={metodoPago === "Mixto" ? trMixto : undefined}
+            total={totalesRecibo?.granTotal || 0}
+            iva={totalesRecibo?.totalIva || 0}
+            efectivoRecibido={totalesRecibo?.efectivoRecibido}
+            vuelto={totalesRecibo?.vuelto}
+            pagoEfectivoMixto={totalesRecibo?.pagoEfectivoMixto}
+            pagoTransferenciaMixto={totalesRecibo?.pagoTransferenciaMixto}
           />
         )}
       </div>
