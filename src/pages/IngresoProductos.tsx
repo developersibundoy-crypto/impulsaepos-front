@@ -769,7 +769,14 @@ function IngresoProductos() {
                 )}
               </div>
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Cantidad</label>
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Cantidad</label>
+                  {!formData.es_servicio && formData.precio_compra && formData.cantidad && (
+                    <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 animate-in fade-in zoom-in duration-300">
+                      Subtotal Costo: {formatCOP((parseFloat(String(formData.precio_compra)) || 0) * (parseInt(String(formData.cantidad)) || 0))}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="text"
                   name="cantidad"
@@ -970,7 +977,7 @@ function IngresoProductos() {
                     <div className="flex items-end justify-between gap-4 border-t border-slate-50">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="bg-indigo-600 text-white text-[8px] font-black px-2.5 py-1.5 rounded-xl shadow-lg shadow-indigo-100 uppercase tracking-widest">
-                          CANTIDAD: {p.cantidad}
+                          CANTIDAD: {p.cantidad} | TOTAL COSTO: {formatCOP((p.precio_compra || 0) * (p.cantidad || 0))}
                         </span>
                         <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-100">
                           UNIDAD: {formatCOP(p.precio_venta)}
