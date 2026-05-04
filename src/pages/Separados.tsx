@@ -68,7 +68,7 @@ export default function Separados() {
     window.scrollTo(0, 0);
     fetchSeparados();
     API.get("/clientes").then(res => setClientes(res.data)).catch(console.error);
-    API.get("/productos").then(res => setProductos(Array.isArray(res.data) ? res.data : (res.data.data || []))).catch(console.error);
+    API.get("/productos?limit=1000").then(res => setProductos(Array.isArray(res.data) ? res.data : (res.data.data || []))).catch(console.error);
     API.get("/cajeros")
       .then(res => {
         setCajeros(res.data);
@@ -169,15 +169,44 @@ export default function Separados() {
     setProdSearch("");
   };
 
-  const handleProdKeyPress = (e: React.KeyboardEvent) => {
+  const handleProdKeyPress = async (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && prodSearch.trim() !== '') {
+      const term = prodSearch.trim();
       const items = Array.isArray(productos) ? productos : [];
-      const matched = items.find(p => 
-        (p.referencia && String(p.referencia).toLowerCase() === prodSearch.toLowerCase()) ||
-        (String(p.nombre).toLowerCase().includes(prodSearch.toLowerCase()))
+      
+      // 1. Intentar match local por referencia exacta (rápido)
+      let matched = items.find(p => 
+        (p.referencia && String(p.referencia).toLowerCase() === term.toLowerCase())
       );
+
+      // 2. Si no hay match por referencia, intentar match local por nombre
+      if (!matched) {
+        matched = items.find(p => 
+          String(p.nombre).toLowerCase().includes(term.toLowerCase())
+        );
+      }
+
       if (matched) {
         addProdToCart(matched);
+        setProdSearch("");
+      } else {
+        // 3. Búsqueda en backend por referencia/código de barras
+        try {
+          const res = await API.get(`/productos/buscar/${encodeURIComponent(term)}`);
+          if (res.data && res.data.id) {
+            const newProd = res.data;
+            // Sincronizar con el estado local para que updateCartQty funcione
+            if (!items.find(p => p.id === newProd.id)) {
+              setProductos(prev => [...prev, newProd]);
+            }
+            addProdToCart(newProd);
+            setProdSearch("");
+          } else {
+            console.log("Producto no encontrado por referencia exacta en backend.");
+          }
+        } catch (error) {
+          console.error("Error al buscar producto por barcode:", error);
+        }
       }
     }
   };
