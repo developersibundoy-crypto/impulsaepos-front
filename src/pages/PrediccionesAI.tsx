@@ -356,6 +356,149 @@ function PrediccionesAI() {
              </div>
           </div>
 
+          {/* STRATEGIC INSIGHTS PANEL — Sugerencias por Categoría */}
+          {rankingIA.length > 0 && (() => {
+            // Motor de Sugerencias Estratégicas (Frontend-only, no DB)
+            const categoryMap: Record<string, { productos: any[], totalVendido: number, totalStock: number, totalProyeccion: number, statuses: string[] }> = {};
+            
+            rankingIA.forEach((p: any) => {
+              const cat = p.categoria || 'Sin Categoría';
+              if (!categoryMap[cat]) {
+                categoryMap[cat] = { productos: [], totalVendido: 0, totalStock: 0, totalProyeccion: 0, statuses: [] };
+              }
+              categoryMap[cat].productos.push(p);
+              categoryMap[cat].totalVendido += p.vendido_total || 0;
+              categoryMap[cat].totalStock += p.stock_disponible || 0;
+              categoryMap[cat].totalProyeccion += p.proyeccion_demanda || 0;
+              categoryMap[cat].statuses.push(p.status);
+            });
+
+            const insights = Object.entries(categoryMap).map(([cat, data]) => {
+              const avgVentas = data.totalVendido / data.productos.length;
+              const muertos = data.statuses.filter(s => s.includes('MUERTO')).length;
+              const exceso = data.statuses.filter(s => s.includes('EXCESO')).length;
+              const reabastecer = data.statuses.filter(s => s.includes('REABASTECER')).length;
+              const estrellas = data.productos.filter(p => p.clase_abc?.startsWith('A')).length;
+              const rotacion = data.totalVendido > 0 ? data.totalStock / (data.totalVendido / (data.productos[0]?.historia?.length || 1)) : 999;
+
+              let nivel: 'alto' | 'moderado' | 'bajo' = 'moderado';
+              const sugerencias: string[] = [];
+
+              // Clasificación y sugerencias
+              if (estrellas > 0 && muertos === 0 && avgVentas > 10) {
+                nivel = 'alto';
+                sugerencias.push('📈 Mantener stock óptimo — categoría con alta demanda confirmada');
+                sugerencias.push('🎯 Aumentar inversión publicitaria para maximizar rotación');
+                if (reabastecer > 0) sugerencias.push(`⚡ ${reabastecer} producto(s) necesitan reabastecimiento urgente`);
+                sugerencias.push('🔗 Identificar productos complementarios para venta cruzada');
+                if (estrellas > 1) sugerencias.push(`⭐ ${estrellas} productos estrella (Clase A) — proteger márgenes`);
+              } else if (muertos >= data.productos.length * 0.5 || (avgVentas < 3 && data.totalVendido > 0) || (data.totalVendido === 0)) {
+                nivel = 'bajo';
+                sugerencias.push('🏷️ Aplicar descuentos agresivos o liquidación para liberar capital');
+                sugerencias.push('📦 Crear combos o paquetes promocionales con productos de alta rotación');
+                sugerencias.push('📍 Reubicar productos en puntos de mayor visibilidad');
+                sugerencias.push('💡 Revisar estrategia de precios vs. la competencia');
+                if (muertos > 0) sugerencias.push(`💀 ${muertos} producto(s) sin movimiento — evaluar sustitución o descontinuación`);
+                if (exceso > 0) sugerencias.push(`🧊 ${exceso} producto(s) con exceso de stock — priorizar rotación`);
+              } else {
+                nivel = 'moderado';
+                sugerencias.push('🎁 Implementar promociones temporales (2x1, descuento por volumen)');
+                sugerencias.push('🔄 Combinar con productos estrella para ventas cruzadas');
+                sugerencias.push('💰 Ajustar precios estratégicamente según elasticidad de demanda');
+                sugerencias.push('👁️ Mejorar visibilidad en punto de venta o catálogo digital');
+                if (reabastecer > 0) sugerencias.push(`📋 ${reabastecer} producto(s) con stock bajo — planificar reposición`);
+                if (exceso > 0) sugerencias.push(`📊 ${exceso} producto(s) con exceso — considerar ofertas flash`);
+              }
+
+              return { cat, nivel, sugerencias, data, muertos, exceso, reabastecer, estrellas };
+            }).sort((a, b) => {
+              const order = { alto: 0, moderado: 1, bajo: 2 };
+              return order[a.nivel] - order[b.nivel];
+            });
+
+            const nivelConfig = {
+              alto: { bg: 'bg-emerald-50', border: 'border-emerald-200', icon: '🚀', label: 'Alto Rendimiento', labelBg: 'bg-emerald-100 text-emerald-700 border-emerald-200', barColor: 'bg-emerald-500', dotColor: 'bg-emerald-500' },
+              moderado: { bg: 'bg-amber-50/50', border: 'border-amber-200', icon: '⚖️', label: 'Rendimiento Moderado', labelBg: 'bg-amber-100 text-amber-700 border-amber-200', barColor: 'bg-amber-500', dotColor: 'bg-amber-500' },
+              bajo: { bg: 'bg-rose-50/50', border: 'border-rose-200', icon: '🔻', label: 'Baja Rotación / Estancado', labelBg: 'bg-rose-100 text-rose-700 border-rose-200', barColor: 'bg-rose-500', dotColor: 'bg-rose-500' }
+            };
+
+            return (
+              <div className="bg-white p-8 md:p-12 rounded-[48px] border border-slate-100 shadow-sm overflow-hidden">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
+                  <div className="space-y-1">
+                    <h2 className="text-xl font-medium text-slate-900 tracking-tight flex items-center gap-3 italic">
+                      <span className="w-1.5 h-6 bg-violet-500 rounded-full"></span> Insights Estratégicos por Categoría
+                    </h2>
+                    <p className="text-slate-400 font-medium text-[9px] uppercase tracking-widest pl-4 opacity-70">
+                      Recomendaciones inteligentes basadas en comportamiento de ventas • Solo visualización
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="px-3 py-1.5 bg-violet-50 text-violet-600 text-[9px] font-black uppercase tracking-widest rounded-full border border-violet-100">
+                      {insights.length} Categorías Analizadas
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {insights.map((insight, idx) => {
+                    const cfg = nivelConfig[insight.nivel];
+                    return (
+                      <div key={idx} className={`${cfg.bg} p-6 rounded-[2rem] border ${cfg.border} transition-all hover:shadow-lg group/card`}>
+                        {/* Category Header */}
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{cfg.icon}</span>
+                            <div>
+                              <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">{insight.cat}</h3>
+                              <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${cfg.labelBg}`}>
+                                {cfg.label}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Productos</div>
+                            <div className="text-lg font-black text-slate-700">{insight.data.productos.length}</div>
+                          </div>
+                        </div>
+
+                        {/* Quick Stats */}
+                        <div className="grid grid-cols-3 gap-2 mb-4">
+                          <div className="bg-white/70 p-2.5 rounded-xl text-center border border-white">
+                            <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Vendidos</div>
+                            <div className="text-sm font-black text-slate-800">{insight.data.totalVendido}</div>
+                          </div>
+                          <div className="bg-white/70 p-2.5 rounded-xl text-center border border-white">
+                            <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Stock</div>
+                            <div className="text-sm font-black text-slate-800">{insight.data.totalStock}</div>
+                          </div>
+                          <div className="bg-white/70 p-2.5 rounded-xl text-center border border-white">
+                            <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Proyección</div>
+                            <div className="text-sm font-black text-indigo-600">{insight.data.totalProyeccion}</div>
+                          </div>
+                        </div>
+
+                        {/* Suggestions List */}
+                        <div className="space-y-2">
+                          <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                            <span className={`w-1 h-3 ${cfg.barColor} rounded-full`}></span>
+                            Sugerencias Estratégicas
+                          </div>
+                          {insight.sugerencias.map((sug, sIdx) => (
+                            <div key={sIdx} className="flex items-start gap-2.5 bg-white/60 px-3 py-2 rounded-xl border border-white group-hover/card:bg-white transition-colors">
+                              <span className={`w-1.5 h-1.5 ${cfg.dotColor} rounded-full mt-1.5 shrink-0`}></span>
+                              <span className="text-[11px] font-medium text-slate-700 leading-snug">{sug}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           <div ref={sectionCantidadesRef} className="bg-white p-8 md:p-12 rounded-[48px] border border-slate-100 shadow-sm overflow-hidden scroll-mt-10">
             <div className="mb-10 space-y-2">
                 <h2 className="text-2xl font-medium text-slate-900 tracking-tight italic">
