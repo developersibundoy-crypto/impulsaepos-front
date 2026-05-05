@@ -1,8 +1,8 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:4000"
-  //baseURL: "https://api.impulsaepos.com"
+  // baseURL: import.meta.env.VITE_API_URL || "http://localhost:4000"}
+  baseURL: "https://api.impulsaepos.com"
 });
 
 // Interceptor para inyectar Token y Tenant ID automáticamente a todas las llamadas

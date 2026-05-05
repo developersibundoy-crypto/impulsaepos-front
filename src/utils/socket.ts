@@ -1,8 +1,8 @@
 
 import { io } from "socket.io-client";
 
-const SOCKET_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
-//const SOCKET_URL = "https://api.impulsaepos.com"
+// const SOCKET_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const SOCKET_URL = "https://api.impulsaepos.com"
 
 export const socket = io(SOCKET_URL, {
   autoConnect: true,
