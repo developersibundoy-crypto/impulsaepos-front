@@ -199,7 +199,7 @@ function Reportes() {
   // Caja Report States
   const [reportesCaja, setReportesCaja] = useState<any[]>([]);
   const [loadingCaja, setLoadingCaja] = useState(false);
-  const [filtrosCaja, setFiltrosCaja] = useState({ desde: '', hasta: '' });
+  const [filtrosCaja, setFiltrosCaja] = useState({ desde: '', hasta: '', usuarioId: '', estado: '' });
   const [expandedCajaRow, setExpandedCajaRow] = useState<number | null>(null);
   const [movimientosDetalle, setMovimientosDetalle] = useState<any[]>([]);
   const [loadingMovs, setLoadingMovs] = useState(false);
@@ -229,6 +229,8 @@ function Reportes() {
       let url = '/caja/reportes?';
       if (filtrosCaja.desde) url += `desde=${filtrosCaja.desde}&`;
       if (filtrosCaja.hasta) url += `hasta=${filtrosCaja.hasta}&`;
+      if (filtrosCaja.usuarioId) url += `usuario_id=${filtrosCaja.usuarioId}&`;
+      if (filtrosCaja.estado) url += `estado=${filtrosCaja.estado}&`;
       const res = await API.get(url);
       setReportesCaja(res.data);
     } catch (error) {
@@ -720,6 +722,33 @@ function Reportes() {
             
             <div className="flex flex-wrap gap-3 no-print">
               <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Cajero</label>
+                <select 
+                  value={filtrosCaja.usuarioId}
+                  onChange={(e) => setFiltrosCaja({...filtrosCaja, usuarioId: e.target.value})}
+                  className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner uppercase"
+                >
+                  <option value="">TODOS</option>
+                  {cajeros.filter(c => c.usuario_id).map(c => (
+                    <option key={c.usuario_id} value={c.usuario_id}>{c.username || c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Estado</label>
+                <select 
+                  value={filtrosCaja.estado}
+                  onChange={(e) => setFiltrosCaja({...filtrosCaja, estado: e.target.value})}
+                  className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner"
+                >
+                  <option value="">TODOS</option>
+                  <option value="Abierta">ABIERTA</option>
+                  <option value="Cerrada">CERRADA</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Desde</label>
                 <input 
                   type="date" 
@@ -775,114 +804,154 @@ function Reportes() {
                         <td colSpan={9} className="px-8 py-32 text-center text-slate-300 font-normal uppercase italic text-xs tracking-widest">No se encontraron registros de caja en este periodo.</td>
                       </tr>
                     ) : (
-                      reportesCaja.map((r) => (
-                        <React.Fragment key={r.id}>
-                          <tr 
-                            onClick={() => toggleDetails(r.id)}
-                            className="hover:bg-slate-50/30 transition-all duration-300 group cursor-pointer"
-                          >
-                            <td className="px-6 py-5">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-medium text-[10px] shadow-sm group-hover:scale-110 transition-transform">
-                                  {r.username?.charAt(0).toUpperCase()}
+                      Object.entries(reportesCaja.reduce((acc: any, curr: any) => {
+                        const user = curr.username || 'General';
+                        if (!acc[user]) acc[user] = { sessions: [], totals: { efectivo: 0, base: 0, digital: 0, ingresos: 0, salidas: 0, reportado: 0, diferencia: 0 } };
+                        acc[user].sessions.push(curr);
+                        acc[user].totals.efectivo += parseFloat(curr.total_efectivo || 0);
+                        acc[user].totals.base += parseFloat(curr.base_caja || 0);
+                        acc[user].totals.digital += parseFloat(curr.total_transferencia || 0);
+                        acc[user].totals.ingresos += parseFloat(curr.total_ingresos || 0);
+                        acc[user].totals.salidas += parseFloat(curr.total_salidas || 0);
+                        acc[user].totals.reportado += parseFloat(curr.dinero_reportado || 0);
+                        acc[user].totals.diferencia += parseFloat(curr.diferencia || 0);
+                        return acc;
+                      }, {})).map(([username, group]: [string, any]) => (
+                        <React.Fragment key={username}>
+                          {/* User Header Row */}
+                          <tr className="bg-slate-100/50">
+                            <td colSpan={9} className="px-6 py-3">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Cajero:</span>
+                                  <span className="text-sm font-black text-slate-900 uppercase italic">{username}</span>
+                                  <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-lg text-[8px] font-bold uppercase ml-2">{group.sessions.length} Turnos</span>
                                 </div>
-                                <div className="flex flex-col">
-                                  <span className="text-[11px] font-medium text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{r.username}</span>
-                                  <span className="text-[8px] text-slate-400 uppercase font-normal italic tracking-tighter">ID: #{r.id}</span>
+                                <div className="flex items-center gap-6">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[8px] text-slate-400 uppercase font-bold">Total Recaudado (Ef + Base)</span>
+                                    <span className="text-xs font-black text-indigo-600">{formatCOP(group.totals.efectivo + group.totals.base)}</span>
+                                  </div>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-[8px] text-slate-400 uppercase font-bold">Total Diferencia</span>
+                                    <span className={`text-xs font-black ${group.totals.diferencia < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatCOP(group.totals.diferencia)}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </td>
-                            <td className="px-6 py-5">
-                              <div className="flex flex-col gap-1">
-                                 <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-medium text-emerald-600 uppercase">A</span>
-                                    <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_apertura).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
-                                 </div>
-                                 {r.fecha_cierre && (
-                                   <div className="flex items-center gap-2">
-                                      <span className="text-[9px] font-medium text-rose-600 uppercase">C</span>
-                                      <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_cierre).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
-                                   </div>
-                                 )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                              <div className="flex flex-col">
-                                 <span className="text-xs font-medium text-slate-900">{formatCOP(r.total_efectivo || 0)}</span>
-                                 <span className="text-[8px] text-slate-400 font-normal uppercase">Base: {formatCOP(r.base_caja)}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                              <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-100">{formatCOP(r.total_transferencia || 0)}</span>
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                               <span className="text-xs font-medium text-emerald-600">+{formatCOP(r.total_ingresos || 0)}</span>
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                               <span className="text-xs font-medium text-rose-600">-{formatCOP(r.total_salidas || 0)}</span>
-                            </td>
-                            <td className="px-6 py-5 text-sm font-medium text-slate-900 text-right tracking-tight">
-                              {formatCOP(r.dinero_reportado)}
-                            </td>
-                            <td className="px-6 py-5 text-right">
-                              <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl font-medium text-[10px] italic ${r.diferencia < 0 ? 'bg-rose-50 text-rose-600 border border-rose-100' : r.diferencia > 0 ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
-                                {formatCOP(r.diferencia)}
-                              </div>
-                            </td>
-                            <td className="px-6 py-5 text-center">
-                              <span className={`px-3 py-1.5 rounded-xl text-[8px] font-medium uppercase tracking-widest border ${r.estado === 'Abierta' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
-                                {r.estado} {expandedCajaRow === r.id ? '▲' : '▼'}
-                              </span>
                             </td>
                           </tr>
-
-                          {expandedCajaRow === r.id && (
-                            <tr className="bg-slate-50/50">
-                              <td colSpan={9} className="px-10 py-6">
-                                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in slide-in-from-top duration-300">
-                                  <div className="bg-slate-900 px-6 py-3 flex justify-between items-center">
-                                    <h4 className="text-[10px] font-medium text-white uppercase tracking-widest">Movimientos de Caja Manuales</h4>
-                                    <span className="text-[9px] text-slate-400 font-normal uppercase italic">Detalle Auditado</span>
-                                  </div>
-                                  
-                                  {loadingMovs ? (
-                                    <div className="p-10 text-center"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
-                                  ) : movimientosDetalle.length === 0 ? (
-                                    <div className="p-10 text-center text-xs text-slate-400 font-normal uppercase italic tracking-widest">No se registraron movimientos manuales en este turno.</div>
-                                  ) : (
-                                    <div className="overflow-x-auto">
-                                      <table className="w-full text-left">
-                                        <thead>
-                                          <tr className="text-[9px] text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                                            <th className="px-6 py-4">Tipo</th>
-                                            <th className="px-6 py-4">Descripción / Motivo</th>
-                                            <th className="px-6 py-4">Hora</th>
-                                            <th className="px-6 py-4 text-right">Monto</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-50">
-                                          {movimientosDetalle.map((m: any) => (
-                                            <tr key={m.id}>
-                                              <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 rounded-lg text-[8px] font-medium uppercase ${m.tipo === 'Ingreso' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                                                  {m.tipo === 'Ingreso' ? '📥 Entra' : '📤 Sale'}
-                                                </span>
-                                              </td>
-                                              <td className="px-6 py-4 text-[11px] font-medium text-slate-600">{m.descripcion}</td>
-                                              <td className="px-6 py-4 text-[10px] text-slate-400 font-normal uppercase">{new Date(m.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</td>
-                                              <td className={`px-6 py-4 text-xs font-medium text-right ${m.tipo === 'Ingreso' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {m.tipo === 'Ingreso' ? '+' : '-'}{formatCOP(m.monto)}
-                                              </td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
+                          
+                          {/* Sessions for this user */}
+                          {group.sessions.map((r: any) => (
+                            <React.Fragment key={r.id}>
+                              <tr 
+                                onClick={() => toggleDetails(r.id)}
+                                className="hover:bg-slate-50/30 transition-all duration-300 group cursor-pointer"
+                              >
+                                <td className="px-6 py-5">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 font-medium text-[10px] shadow-sm group-hover:scale-110 transition-transform">
+                                      #{r.id}
                                     </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
+                                    <div className="flex flex-col">
+                                      <span className="text-[11px] font-medium text-slate-600 uppercase tracking-tight italic">Sesión de Caja</span>
+                                      <span className="text-[8px] text-slate-400 uppercase font-normal tracking-widest">Audit ID</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-5">
+                                  <div className="flex flex-col gap-1">
+                                     <div className="flex items-center gap-2">
+                                        <span className="text-[9px] font-medium text-emerald-600 uppercase">A</span>
+                                        <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_apertura).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                     </div>
+                                     {r.fecha_cierre && (
+                                       <div className="flex items-center gap-2">
+                                          <span className="text-[9px] font-medium text-rose-600 uppercase">C</span>
+                                          <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_cierre).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                       </div>
+                                     )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-5 text-right">
+                                  <div className="flex flex-col">
+                                     <span className="text-xs font-medium text-slate-900">{formatCOP(r.total_efectivo || 0)}</span>
+                                     <span className="text-[8px] text-slate-400 font-normal uppercase">Base: {formatCOP(r.base_caja)}</span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-5 text-right">
+                                  <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-100">{formatCOP(r.total_transferencia || 0)}</span>
+                                </td>
+                                <td className="px-6 py-5 text-right">
+                                   <span className="text-xs font-medium text-emerald-600">+{formatCOP(r.total_ingresos || 0)}</span>
+                                </td>
+                                <td className="px-6 py-5 text-right">
+                                   <span className="text-xs font-medium text-rose-600">-{formatCOP(r.total_salidas || 0)}</span>
+                                </td>
+                                <td className="px-6 py-5 text-sm font-medium text-slate-900 text-right tracking-tight">
+                                  {formatCOP(r.dinero_reportado)}
+                                </td>
+                                <td className="px-6 py-5 text-right">
+                                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl font-medium text-[10px] italic ${r.diferencia < 0 ? 'bg-rose-50 text-rose-600 border border-rose-100' : r.diferencia > 0 ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                                    {formatCOP(r.diferencia)}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-5 text-center">
+                                  <span className={`px-3 py-1.5 rounded-xl text-[8px] font-medium uppercase tracking-widest border ${r.estado === 'Abierta' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                                    {r.estado} {expandedCajaRow === r.id ? '▲' : '▼'}
+                                  </span>
+                                </td>
+                              </tr>
+
+                              {expandedCajaRow === r.id && (
+                                <tr className="bg-slate-50/50">
+                                  <td colSpan={9} className="px-10 py-6">
+                                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in slide-in-from-top duration-300">
+                                      <div className="bg-slate-900 px-6 py-3 flex justify-between items-center">
+                                        <h4 className="text-[10px] font-medium text-white uppercase tracking-widest">Movimientos de Caja Manuales</h4>
+                                        <span className="text-[9px] text-slate-400 font-normal uppercase italic">Detalle Auditado</span>
+                                      </div>
+                                      
+                                      {loadingMovs ? (
+                                        <div className="p-10 text-center"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
+                                      ) : movimientosDetalle.length === 0 ? (
+                                        <div className="p-10 text-center text-xs text-slate-400 font-normal uppercase italic tracking-widest">No se registraron movimientos manuales en este turno.</div>
+                                      ) : (
+                                        <div className="overflow-x-auto">
+                                          <table className="w-full text-left">
+                                            <thead>
+                                              <tr className="text-[9px] text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                                                <th className="px-6 py-4">Tipo</th>
+                                                <th className="px-6 py-4">Descripción / Motivo</th>
+                                                <th className="px-6 py-4">Hora</th>
+                                                <th className="px-6 py-4 text-right">Monto</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-50">
+                                              {movimientosDetalle.map((m: any) => (
+                                                <tr key={m.id}>
+                                                  <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 rounded-lg text-[8px] font-medium uppercase ${m.tipo === 'Ingreso' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                                      {m.tipo === 'Ingreso' ? '📥 Entra' : '📤 Sale'}
+                                                    </span>
+                                                  </td>
+                                                  <td className="px-6 py-4 text-[11px] font-medium text-slate-600">{m.descripcion}</td>
+                                                  <td className="px-6 py-4 text-[10px] text-slate-400 font-normal uppercase">{new Date(m.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}</td>
+                                                  <td className={`px-6 py-4 text-xs font-medium text-right ${m.tipo === 'Ingreso' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                    {m.tipo === 'Ingreso' ? '+' : '-'}{formatCOP(m.monto)}
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          ))}
                         </React.Fragment>
                       ))
                     )}

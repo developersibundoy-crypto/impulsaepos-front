@@ -61,6 +61,7 @@ export interface Borrador {
 }
 
 export interface ProductoIngresado extends Producto {
+  id_lote?: string;
   inyectado?: boolean;
   cantidad_inyectada?: number;
 }

@@ -280,6 +280,7 @@ function IngresoProductos() {
 
     // Construimos el objeto respetando estrictamente la interfaz ProductoIngresado
     const nuevoProducto: ProductoIngresado = {
+      id_lote: Date.now().toString(36) + Math.random().toString(36).substring(2),
       referencia: formData.referencia,
       nombre: formData.nombre,
       categoria: categoriaFinal,
@@ -302,6 +303,7 @@ function IngresoProductos() {
         updatedList[editIndex] = {
           ...existingItem,
           ...nuevoProducto,
+          id_lote: existingItem.id_lote,
           inyectado: existingItem.inyectado,
           cantidad_inyectada: existingItem.cantidad_inyectada || 0
         };
@@ -323,6 +325,7 @@ function IngresoProductos() {
           updatedList[existingIndex] = {
             ...existingItem,
             ...nuevoProducto, // Los precios y metadata nuevos sobrescriben los anteriores
+            id_lote: existingItem.id_lote, // Mantenemos el ID original de la fila
             cantidad: (Number(existingItem.cantidad) || 0) + nuevoProducto.cantidad,
             inyectado: existingItem.inyectado, // Mantenemos el flag de inyección original
             cantidad_inyectada: existingItem.cantidad_inyectada || 0
@@ -361,7 +364,8 @@ function IngresoProductos() {
       const itemsParaInyectar = productosIngresados.map(p => {
         const cantInyectada = p.cantidad_inyectada || 0;
         const delta = p.cantidad - cantInyectada;
-        return delta > 0 ? { ...p, delta } : null;
+        // IMPORTANTE: Enviamos 'delta' para el cálculo del backend y 'cantidad' por compatibilidad
+        return delta > 0 ? { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad } : null;
       }).filter(Boolean);
 
       if (itemsParaInyectar.length > 0) {
@@ -405,7 +409,8 @@ function IngresoProductos() {
       const itemsParaInyectar = productosIngresados.map(p => {
         const cantInyectada = p.cantidad_inyectada || 0;
         const delta = p.cantidad - cantInyectada;
-        return delta > 0 ? { ...p, delta } : null;
+        // IMPORTANTE: Enviamos 'delta' para el cálculo del backend y 'cantidad' por compatibilidad
+        return delta > 0 ? { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad } : null;
       }).filter(Boolean);
 
       if (itemsParaInyectar.length > 0) {
@@ -424,12 +429,13 @@ function IngresoProductos() {
         return acc + subtotal;
       }, 0);
 
-      // 3. Crear Compra Central
+      // 3. Crear Compra Central (Solo registro, ya que el stock se inyectó arriba)
       await API.post("/compras", {
         proveedor,
         numero_factura: numeroFactura,
         total: granTotal,
-        productos: itemsFinales
+        productos: itemsFinales,
+        solo_registro: true
       });
 
       alert("✅ Factura completada. Proceso cerrado.");
@@ -463,7 +469,12 @@ function IngresoProductos() {
       console.error("Error parsing borrador detalles:", e);
     }
 
-    setProductosIngresados(Array.isArray(parsedProductos) ? parsedProductos : []);
+    const itemsLoaded = (Array.isArray(parsedProductos) ? parsedProductos : []).map(p => ({
+      ...p,
+      id_lote: p.id_lote || Date.now().toString(36) + Math.random().toString(36).substring(2)
+    }));
+
+    setProductosIngresados(itemsLoaded);
     setCurrentDraftId(d.id);
     setShowDrafts(false);
   };
@@ -940,7 +951,7 @@ function IngresoProductos() {
             <div className="space-y-2.5">
               {productosIngresados.map((p, index) => (
                 <div 
-                  key={index} 
+                  key={p.id_lote || index} 
                   onClick={() => handleEditItem(index)}
                   className={`bg-white p-5 rounded-xl border ${editIndex === index ? 'border-amber-400 shadow-amber-100/50' : 'border-slate-200 hover:border-indigo-300 hover:shadow-indigo-100/50'} hover:shadow-2xl transition-all relative group/item animate-in fade-in slide-in-from-right-4 duration-500 cursor-pointer`} 
                   style={{ animationDelay: `${index * 50}ms` }}
