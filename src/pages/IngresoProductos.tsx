@@ -790,6 +790,15 @@ function IngresoProductos() {
                       : 'bg-slate-50 border-slate-200 text-slate-900 group-hover:bg-white'
                   }`}
                 />
+                {/* Indicador de Costo Total del Lote (cantidad × costo unitario) */}
+                {!formData.es_servicio && (parseFloat(String(formData.precio_compra)) || 0) > 0 && (parseInt(String(formData.cantidad), 10) || 0) > 0 && (
+                  <div className="mt-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-between animate-in fade-in duration-300">
+                    <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">Costo Total Lote</span>
+                    <span className="text-xs font-black text-indigo-700 tracking-tight">
+                      {formatCOP((parseFloat(String(formData.precio_compra)) || 0) * (parseInt(String(formData.cantidad), 10) || 0))}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="space-y-1.5 col-span-2 md:col-span-1">
                 <label className="text-[9px] font-black text-rose-500 uppercase tracking-widest ml-1">IVA (%) (Opcional)</label>
@@ -979,8 +988,14 @@ function IngresoProductos() {
                         <span className="bg-indigo-600 text-white text-[8px] font-black px-2.5 py-1.5 rounded-xl shadow-lg shadow-indigo-100 uppercase tracking-widest">
                           CANTIDAD: {p.cantidad} | TOTAL COSTO: {formatCOP((p.precio_compra || 0) * (p.cantidad || 0))}
                         </span>
+                        <span className="bg-blue-50 text-blue-600 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border border-blue-100">
+                          COSTO U: {formatCOP(p.precio_compra)}
+                        </span>
+                        <span className="bg-amber-50 text-amber-700 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border border-amber-100">
+                          COSTO LOTE: {formatCOP((parseFloat(String(p.precio_compra)) || 0) * (p.cantidad || 0))}
+                        </span>
                         <span className="bg-emerald-50 text-emerald-600 text-[8px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest border border-emerald-100">
-                          UNIDAD: {formatCOP(p.precio_venta)}
+                          PVP: {formatCOP(p.precio_venta)}
                         </span>
                         <span className="text-[7px] font-black text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-full uppercase tracking-widest border border-indigo-100/50">
                           {p.categoria}
