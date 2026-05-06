@@ -876,7 +876,7 @@ function Reportes() {
                                 <td className="px-6 py-5 text-right">
                                   <div className="flex flex-col">
                                      <span className="text-xs font-medium text-slate-900">{formatCOP(r.total_efectivo || 0)}</span>
-                                     <span className="text-[8px] text-slate-400 font-normal uppercase">Base: {formatCOP(r.base_caja)}</span>
+                                     <span className="text-[10px] text-indigo-600 font-medium uppercase mt-1 block">Base: {formatCOP(r.base_caja)}</span>
                                   </div>
                                 </td>
                                 <td className="px-6 py-5 text-right">

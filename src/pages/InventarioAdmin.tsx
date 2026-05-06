@@ -16,14 +16,25 @@ function InventarioAdmin() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
+  // Categories filter
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState("");
+
   useEffect(() => {
     window.scrollTo(0, 0);
+    fetchCategorias();
     fetchProductos(1);
-  }, [tipo]);
+  }, [tipo, selectedCategory]);
+
+  const fetchCategorias = () => {
+    API.get("/productos/categorias")
+      .then(res => setCategorias(res.data))
+      .catch(console.error);
+  };
 
   const fetchProductos = (p: number = page, search: string = searchTerm) => {
     setLoading(true);
-    API.get(`/productos?tipo=${tipo}&page=${p}&limit=50&search=${search}`)
+    API.get(`/productos?tipo=${tipo}&page=${p}&limit=50&search=${search}&categoria=${selectedCategory}`)
       .then(res => {
         // Backend now returns { data: [], total: X, last_page: Y, ... }
         setProductos(res.data.data);
@@ -79,7 +90,7 @@ function InventarioAdmin() {
     setLoading(true);
     try {
       // Obtenemos todos los registros (sin paginación para el reporte global)
-      const res = await API.get(`/productos?tipo=${tipo}&limit=5000`);
+      const res = await API.get(`/productos?tipo=${tipo}&limit=5000&categoria=${selectedCategory}`);
       const allData = res.data.data || res.data;
 
       if (!allData || allData.length === 0) {
@@ -132,7 +143,7 @@ function InventarioAdmin() {
     <div className="max-w-[1400px] mx-auto animate-in fade-in duration-700 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12 pb-8 border-b border-slate-200">
         <div className="space-y-1">
-          <h1 className="text-4xl tracking-tight text-slate-900 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-500 font-bold">
+          <h1 className="text-4xl tracking-tight text-slate-900 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-500">
             Inventario Global
           </h1>
           <p className="text-slate-500 font-medium text-lg italic">Búsqueda, edición y gestión maestra de productos y servicios.</p>
@@ -140,7 +151,7 @@ function InventarioAdmin() {
 
         <button 
           onClick={handleExportExcel}
-          className="px-8 py-4 bg-emerald-600 text-white rounded-[24px] font-black text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-emerald-100 flex items-center gap-3 active:scale-95 italic no-print"
+          className="px-8 py-4 bg-emerald-600 text-white rounded-[24px] text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-emerald-100 flex items-center gap-3 active:scale-95 italic no-print"
         >
           <span>📊</span> Descargar Reporte Excel (.xlsx)
         </button>
@@ -149,45 +160,61 @@ function InventarioAdmin() {
       <div className="flex gap-4 mb-8 bg-slate-100 p-1.5 rounded-2xl w-fit">
         <button 
           onClick={() => setTipo("producto")}
-          className={`px-8 py-3 rounded-xl font-bold transition-all ${tipo === 'producto' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`px-8 py-3 rounded-xl transition-all ${tipo === 'producto' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           📦 Mercancía (Productos)
         </button>
         <button 
           onClick={() => setTipo("servicio")}
-          className={`px-8 py-3 rounded-xl font-bold transition-all ${tipo === 'servicio' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`px-8 py-3 rounded-xl transition-all ${tipo === 'servicio' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           ⚡ Servicios Profesionales
         </button>
       </div>
 
-      <div className="relative group mb-10">
-        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors text-xl">🔍</span>
-        <input 
-          type="text" 
-          placeholder={`Buscar ${tipo === 'producto' ? 'productos físicos' : 'servicios'}...`} 
-          value={searchTerm}
-          onChange={e => handleSearchChange(e.target.value)}
-          className="w-full pl-16 pr-8 py-5 bg-white border border-slate-200 rounded-[32px] text-slate-700 outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all shadow-md font-medium"
-        />
+      <div className="flex flex-col md:flex-row gap-4 mb-10">
+        <div className="relative group flex-1">
+          <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors text-xl">🔍</span>
+          <input 
+            type="text" 
+            placeholder={`Buscar ${tipo === 'producto' ? 'productos físicos' : 'servicios'}...`} 
+            value={searchTerm}
+            onChange={e => handleSearchChange(e.target.value)}
+            className="w-full pl-16 pr-8 py-5 bg-white border border-slate-200 rounded-[32px] text-slate-700 outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all shadow-md font-medium"
+          />
+        </div>
+
+        <div className="relative w-full md:w-72">
+          <select 
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="w-full px-8 py-5 bg-white border border-slate-200 rounded-[32px] text-slate-700 outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all shadow-md uppercase appearance-none cursor-pointer"
+          >
+            <option value="">📂 TODAS LAS CATEGORÍAS</option>
+            {categorias.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+          <span className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-xs">▼</span>
+        </div>
       </div>
 
       <div className="bg-white rounded-[40px] border border-slate-200 shadow-2xl overflow-hidden">
         <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <h3 className="text-lg text-slate-900 uppercase tracking-widest flex items-center gap-2 font-bold">
+            <h3 className="text-lg text-slate-900 uppercase tracking-widest flex items-center gap-2">
                 <span className="w-2 h-6 bg-indigo-500 rounded-full"></span> 
                 {tipo === 'producto' ? 'Inventario de Bodega' : 'Portafolio de Servicios'}
             </h3>
             <div className="flex items-center gap-4">
-               <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest bg-white border border-slate-200 px-4 py-2 rounded-full shadow-sm">{totalRecords} Registros Totales</span>
-               <span className="text-[10px] text-indigo-600 font-black uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100">Página {page} de {totalPages}</span>
+               <span className="text-[10px] text-slate-500 uppercase tracking-widest bg-white border border-slate-200 px-4 py-2 rounded-full shadow-sm">{totalRecords} Registros Totales</span>
+               <span className="text-[10px] text-indigo-600 uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-full border border-indigo-100">Página {page} de {totalPages}</span>
             </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10px] text-slate-400 font-black uppercase tracking-widest border-b border-slate-100 bg-white">
+              <tr className="text-[10px] text-slate-400 uppercase tracking-widest border-b border-slate-100 bg-white">
                 <th className="px-8 py-5">Tipo</th>
                 <th className="px-8 py-5">SKU / Ref</th>
                 <th className="px-8 py-5">Nombre Ítem</th>
@@ -207,23 +234,23 @@ function InventarioAdmin() {
                   <tr key={p.id} className="group hover:bg-slate-50/50 transition-colors">
                     <td className="px-8 py-6">
                       {p.es_servicio ? (
-                        <span className="bg-blue-50 text-blue-600 text-[9px] px-2 py-0.5 rounded-lg border border-blue-100 font-black">SERVICIO</span>
+                        <span className="bg-blue-50 text-blue-600 text-[9px] px-2 py-0.5 rounded-lg border border-blue-100">SERVICIO</span>
                       ) : (
-                        <span className="bg-emerald-50 text-emerald-600 text-[9px] px-2 py-0.5 rounded-lg border border-emerald-100 font-black">PRODUCTO</span>
+                        <span className="bg-emerald-50 text-emerald-600 text-[9px] px-2 py-0.5 rounded-lg border border-emerald-100">PRODUCTO</span>
                       )}
                     </td>
-                    <td className="px-8 py-6 text-slate-900 text-xs font-mono font-bold">{(p.referencia || "—")}</td>
+                    <td className="px-8 py-6 text-slate-900 text-xs font-mono">{(p.referencia || "—")}</td>
                     <td className="px-8 py-6">
-                      <div className="text-slate-900 uppercase leading-tight group-hover:text-indigo-600 transition-colors font-bold">{p.nombre}</div>
+                      <div className="text-slate-900 uppercase leading-tight group-hover:text-indigo-600 transition-colors">{p.nombre}</div>
                     </td>
                     <td className="px-8 py-6">
-                      <span className="text-[10px] text-slate-900 font-bold uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-lg">REF: {p.referencia || 'S/R'}</span>
+                      <span className="text-[10px] text-slate-900 uppercase tracking-widest bg-slate-100 px-2.5 py-1 rounded-lg">{p.categoria || 'SIN CATEGORÍA'}</span>
                     </td>
                     <td className="px-8 py-6 text-center">
                       {p.es_servicio ? (
                         <span className="text-slate-300 text-[10px] italic font-medium">Ilimitado</span>
                       ) : (
-                        <span className={`px-4 py-1 rounded-full text-[10px] items-center gap-2 uppercase tracking-widest font-black flex justify-center mx-auto w-fit ${
+                        <span className={`px-4 py-1 rounded-full text-[10px] items-center gap-2 uppercase tracking-widest flex justify-center mx-auto w-fit ${
                           p.cantidad <= 0 ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-slate-50 text-slate-500 border border-slate-200'
                         }`}>
                           <span className={`w-1 h-1 rounded-full ${p.cantidad <= 0 ? 'bg-rose-600 animate-pulse' : 'bg-slate-400'}`}></span>
@@ -231,7 +258,7 @@ function InventarioAdmin() {
                         </span>
                       )}
                     </td>
-                    <td className="px-8 py-6 text-right text-indigo-600 font-black text-lg">
+                    <td className="px-8 py-6 text-right text-indigo-600 text-lg">
                       {formatCOP(p.precio_venta)}
                     </td>
                     <td className="px-8 py-6">
@@ -265,14 +292,14 @@ function InventarioAdmin() {
               <button 
                 disabled={page <= 1 || loading}
                 onClick={() => fetchProductos(page - 1)}
-                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 font-black text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
                 Anterior
               </button>
               <button 
                 disabled={page >= totalPages || loading}
                 onClick={() => fetchProductos(page + 1)}
-                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 font-black text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
                 Siguiente
               </button>
@@ -291,7 +318,7 @@ function InventarioAdmin() {
                    <button
                      key={pNum}
                      onClick={() => fetchProductos(pNum)}
-                     className={`w-10 h-10 rounded-xl font-black text-[10px] transition-all ${page === pNum ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-400 border border-slate-200 hover:bg-slate-50'}`}
+                     className={`w-10 h-10 rounded-xl text-[10px] transition-all ${page === pNum ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-400 border border-slate-200 hover:bg-slate-50'}`}
                    >
                      {pNum}
                    </button>
@@ -299,7 +326,7 @@ function InventarioAdmin() {
               })}
            </div>
 
-           <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">
+           <div className="text-[10px] text-slate-400 uppercase tracking-widest">
               Mostrando página {page} de {totalPages}
            </div>
         </div>
@@ -310,11 +337,11 @@ function InventarioAdmin() {
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setEditingProduct(null)}></div>
           <div className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-3xl p-10 animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto border border-slate-100">
             <div className="flex items-center justify-between mb-8">
-               <h2 className="text-2xl text-slate-900 flex items-center gap-3 font-bold">
+               <h2 className="text-2xl text-slate-900 flex items-center gap-3">
                   <span className="w-2 h-8 bg-indigo-600 rounded-full"></span> Editar Ítem
                </h2>
                <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">¿Es un Servicio?</span>
+                  <span className="text-[10px] text-slate-400 uppercase tracking-widest">¿Es un Servicio?</span>
                   <button 
                     type="button"
                     onClick={() => {
@@ -334,48 +361,48 @@ function InventarioAdmin() {
 
             <form onSubmit={handleUpdate} className="grid grid-cols-2 gap-6">
               <div className="space-y-2 col-span-2">
-                <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest ml-1">Nombre</label>
+                <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Nombre</label>
                 <input 
                   type="text" 
                   value={editingProduct.nombre} 
                   onChange={e => setEditingProduct({...editingProduct, nombre: e.target.value})}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bold uppercase"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all uppercase"
                   required
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest ml-1">Referencia / SKU</label>
+                <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Referencia / SKU</label>
                 <input 
                   type="text" 
                   value={editingProduct.referencia} 
                   onChange={e => setEditingProduct({...editingProduct, referencia: e.target.value})}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-mono font-bold"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-mono"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest ml-1">Categoría</label>
+                <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Categoría</label>
                 <input 
                   type="text" 
                   value={editingProduct.categoria} 
                   onChange={e => setEditingProduct({...editingProduct, categoria: e.target.value})}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-bold uppercase"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all uppercase"
                 />
               </div>
 
               {!editingProduct.es_servicio && (
                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                  <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest ml-1">Stock Actual (UND)</label>
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Stock Actual (UND)</label>
                   <input 
                     type="number" 
                     value={editingProduct.cantidad} 
                     onChange={e => setEditingProduct({...editingProduct, cantidad: parseInt(e.target.value)})}
-                    className="w-full px-5 py-4 bg-amber-50/30 border border-amber-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-amber-100 transition-all font-black text-amber-700 text-xl"
+                    className="w-full px-5 py-4 bg-amber-50/30 border border-amber-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-amber-100 transition-all text-amber-700 text-xl"
                   />
                 </div>
               )}
 
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest ml-1">Costo Unitario ($)</label>
+                <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Costo Unitario ($)</label>
                 <input 
                   type="number" 
                   step="0.01"
@@ -391,12 +418,12 @@ function InventarioAdmin() {
                       precio_venta: Math.round(base * (1 + iva / 100))
                     });
                   }}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-black text-slate-900"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all text-slate-900"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest ml-1">% Margen Ganancia</label>
+                <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">% Margen Ganancia</label>
                 <input 
                   type="number" 
                   step="0.1"
@@ -412,12 +439,12 @@ function InventarioAdmin() {
                       precio_venta: Math.round(base * (1 + iva / 100))
                     });
                   }}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-black text-slate-900"
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all text-slate-900"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest ml-1">PV Sugerido (Con IVA)</label>
+                <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">PV Sugerido (Con IVA)</label>
                 <input 
                   type="number" 
                   value={editingProduct.precio_venta} 
@@ -433,9 +460,9 @@ function InventarioAdmin() {
                       porcentaje_ganancia: pc > 0 ? Math.round(((base - pc) / pc) * 100) : editingProduct.porcentaje_ganancia
                     });
                   }}
-                  className="w-full px-5 py-4 bg-indigo-50 border border-indigo-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-100 transition-all font-black text-indigo-700 text-xl"
+                  className="w-full px-5 py-4 bg-indigo-50 border border-indigo-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-100 transition-all text-indigo-700 text-xl"
                 />
-                <p className="text-[9px] text-slate-400 uppercase font-black tracking-widest mt-1 ml-1 self-end">
+                <p className="text-[9px] text-slate-400 uppercase tracking-widest mt-1 ml-1 self-end">
                    Base Gravable (Sin IVA): 
                    <span className="text-indigo-600 ml-1">
                       {formatCOP(Math.round(editingProduct.precio_venta / (1 + (parseFloat(editingProduct.iva_porcentaje || 0) / 100))))}
@@ -444,7 +471,7 @@ function InventarioAdmin() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] text-rose-500 font-black uppercase tracking-widest ml-1">IVA (%) (Opcional)</label>
+                <label className="text-[10px] text-rose-500 uppercase tracking-widest ml-1">IVA (%) (Opcional)</label>
                 <input 
                   type="number" 
                   value={editingProduct.iva_porcentaje} 
@@ -459,35 +486,35 @@ function InventarioAdmin() {
                         precio_venta: Math.round(base * (1 + ivaPerc / 100))
                       });
                   }}
-                  className="w-full px-5 py-4 bg-rose-50/30 border border-rose-100 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-rose-50 transition-all font-black text-rose-600"
+                  className="w-full px-5 py-4 bg-rose-50/30 border border-rose-100 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-rose-50 transition-all text-rose-600"
                   placeholder="0"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] text-amber-500 font-black uppercase tracking-widest ml-1">Vencimiento (Opcional)</label>
+                <label className="text-[10px] text-amber-500 uppercase tracking-widest ml-1">Vencimiento (Opcional)</label>
                 <input 
                   type="date" 
                   value={editingProduct.fecha_vencimiento ? editingProduct.fecha_vencimiento.split('T')[0] : ""} 
                   onChange={e => setEditingProduct({...editingProduct, fecha_vencimiento: e.target.value})}
-                  className="w-full px-5 py-4 bg-amber-50/30 border border-amber-100 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-amber-50 transition-all font-black text-amber-700 text-sm"
+                  className="w-full px-5 py-4 bg-amber-50/30 border border-amber-100 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-amber-50 transition-all text-amber-700 text-sm"
                 />
               </div>
               
               <div className="col-span-2 space-y-2 p-6 bg-slate-100/50 rounded-3xl border border-slate-200">
-                <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest ml-1 mb-2 block tracking-widest">Política de Disponibilidad</label>
+                <label className="text-[10px] text-slate-500 uppercase tracking-widest ml-1 mb-2 block tracking-widest">Política de Disponibilidad</label>
                 <div className="flex bg-white p-1 rounded-2xl border border-slate-200">
                   <button 
                     type="button"
                     onClick={() => setEditingProduct({ ...editingProduct, permitir_venta_negativa: 1 })}
-                    className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingProduct.permitir_venta_negativa ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-100' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`flex-1 py-4 rounded-xl text-[10px] uppercase tracking-widest transition-all ${editingProduct.permitir_venta_negativa ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-100' : 'text-slate-400 hover:text-slate-600'}`}
                   >
                       🔓 Venta Libre
                   </button>
                   <button 
                     type="button"
                     onClick={() => setEditingProduct({ ...editingProduct, permitir_venta_negativa: 0 })}
-                    className={`flex-1 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!editingProduct.permitir_venta_negativa ? 'bg-rose-600 text-white shadow-xl shadow-rose-100' : 'text-slate-400 hover:text-slate-600'}`}
+                    className={`flex-1 py-4 rounded-xl text-[10px] uppercase tracking-widest transition-all ${!editingProduct.permitir_venta_negativa ? 'bg-rose-600 text-white shadow-xl shadow-rose-100' : 'text-slate-400 hover:text-slate-600'}`}
                   >
                       🔒 Solo Stock
                   </button>
@@ -498,14 +525,14 @@ function InventarioAdmin() {
                 <button 
                   type="button" 
                   onClick={() => setEditingProduct(null)}
-                  className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl uppercase tracking-widest text-[10px] font-black hover:bg-slate-200 transition-all font-bold"
+                  className="flex-1 py-5 bg-slate-100 text-slate-500 rounded-3xl uppercase tracking-widest text-[10px] hover:bg-slate-200 transition-all"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit" 
                   disabled={isSaving}
-                  className="flex-[2] py-5 bg-indigo-600 text-white rounded-3xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-1 transition-all uppercase tracking-widest text-[10px] font-black"
+                  className="flex-[2] py-5 bg-indigo-600 text-white rounded-3xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-1 transition-all uppercase tracking-widest text-[10px]"
                 >
                   {isSaving ? "⏳ Guardando..." : "💾 Sincronizar Cambios"}
                 </button>
