@@ -2,32 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import LoginAdministracion from './LoginAdministracion';
 import WompiCheckout from '../components/WompiCheckout';
+import PricingPlans from '../components/PricingPlans';
 import { hasAccess, hasPlanFeature, PLAN_FEATURES } from '../utils/auth';
 import PlanRestrictionModal from '../components/PlanRestrictionModal';
 
 function PanelAdministracion() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [planCategory, setPlanCategory] = useState<'standard' | 'facturacion'>('standard');
-  const [selectedPlan, setSelectedPlan] = useState('mensual');
   const [isRestrictedModalOpen, setIsRestrictedModalOpen] = useState(false);
   const [restrictedFeature, setRestrictedFeature] = useState('');
   
   const navigate = useNavigate();
-
-  const planesStandard: any = {
-    mensual: { id: '30', label: 'Mensual', precio: 70000, amount: 7000000, desc: '30 Días de Acceso', tag: 'Básico' },
-    semestral: { id: '180', label: 'Semestral', precio: 378000, amount: 37800000, desc: '180 Días de Acceso', tag: 'Popular', ahorro: '10%' },
-    anual: { id: '365', label: 'Anual', precio: 672000, amount: 67200000, desc: '365 Días de Acceso', tag: 'Mejor Valor', ahorro: '20%' }
-  };
-
-  const planesFacturacion: any = {
-    mensual: { id: '30_FE', label: 'Mensual + FE', precio: 100000, amount: 10000000, desc: '30 Días + Facturación Electrónica', tag: 'Pro' },
-    semestral: { id: '180_FE', label: 'Semestral + FE', precio: 540000, amount: 54000000, desc: '180 Días + Facturación Electrónica', tag: 'Pro', ahorro: '10%' },
-    anual: { id: '365_FE', label: 'Anual + FE', precio: 960000, amount: 96000000, desc: '365 Días + Facturación Electrónica', tag: 'Empresarial', ahorro: '20%' }
-  };
-
-  const currentPlanes = planCategory === 'standard' ? planesStandard : planesFacturacion;
-
 
   useEffect(() => {
     const token = localStorage.getItem('adminToken');
@@ -251,89 +235,7 @@ function PanelAdministracion() {
       </div>
 
       <section id="seccion-planes" className="animate-in slide-in-from-bottom-4 duration-500 overflow-hidden relative mt-20">
-        <div className="bg-gradient-to-br from-indigo-950 via-indigo-900 to-slate-900 rounded-[2.5rem] p-8 md:p-12 text-white shadow-2xl shadow-indigo-200/50 flex flex-col xl:flex-row items-center gap-12 border-4 border-indigo-500/10">
-          <div className="flex-1 space-y-6 text-center xl:text-left w-full">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-indigo-500/20 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-400/20 backdrop-blur-md">
-              <span className="flex h-2 w-2 rounded-full bg-indigo-400 animate-pulse"></span>
-              Impulsa tu Crecimiento
-            </div>
-            <h2 className="text-3xl md:text-5xl font-black tracking-tighter leading-none italic">
-              ¡Tu éxito es nuestro mayor <br />
-              <span className="text-indigo-400 underline decoration-indigo-800 underline-offset-8">TRIUNFO!</span>
-            </h2>
-            
-            {/* Categorías de Planes */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center xl:justify-start pt-4">
-              <button
-                onClick={() => { setPlanCategory('standard'); setSelectedPlan('mensual'); }}
-                className={`px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${planCategory === 'standard' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
-              >
-                📊 Planes Estándar
-              </button>
-              <button
-                onClick={() => { setPlanCategory('facturacion'); setSelectedPlan('mensual'); }}
-                className={`px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${planCategory === 'facturacion' ? 'bg-amber-500 text-white shadow-lg' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
-              >
-                ⚡ Planes con Facturación Electrónica
-              </button>
-            </div>
-
-            <p className="text-indigo-100/60 text-sm font-medium leading-relaxed max-w-2xl italic mx-auto xl:mx-0 pt-2">
-              {planCategory === 'facturacion' 
-                ? "Accede a la emisión de facturas legales, sincronización con la DIAN y gestión de folios desde una plataforma simplificada."
-                : "Optimiza tu control de inventario, ventas y analítica básica con nuestros planes esenciales."
-              }
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-               {Object.keys(currentPlanes).map((key) => (
-                  <button
-                     key={key}
-                     onClick={() => setSelectedPlan(key)}
-                     className={`p-6 rounded-3xl border-2 transition-all duration-300 flex flex-col items-center gap-2 relative overflow-hidden group ${
-                        selectedPlan === key 
-                        ? 'border-indigo-400 bg-indigo-500/10 shadow-lg shadow-indigo-500/20 translate-y-[-4px]' 
-                        : 'border-white/5 bg-white/5 hover:bg-white/10'
-                     }`}
-                  >
-                     {currentPlanes[key].ahorro && (
-                        <span className="absolute top-2 right-2 bg-emerald-500 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter shadow-lg">Ahorra {currentPlanes[key].ahorro}</span>
-                     )}
-                     <span className={`text-[10px] font-black uppercase tracking-widest ${selectedPlan === key ? 'text-indigo-300' : 'text-slate-400'}`}>{currentPlanes[key].label}</span>
-                     <span className="text-2xl font-black tracking-tighter leading-none">${currentPlanes[key].precio.toLocaleString()}</span>
-                     <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest text-center">{currentPlanes[key].desc}</span>
-                  </button>
-               ))}
-            </div>
-          </div>
-
-          <div className="w-full xl:w-[380px] shrink-0 bg-white/5 backdrop-blur-2xl p-8 xl:p-10 rounded-[3rem] border border-white/10 flex flex-col items-center justify-center text-center shadow-2xl relative translate-y-4">
-             <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center text-3xl mb-4 shadow-xl shadow-indigo-900/40 animate-bounce duration-[3000ms]">💎</div>
-             <p className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-300/80 mb-1">Plan {currentPlanes[selectedPlan].label} Seleccionado</p>
-             <h4 className="text-5xl font-black text-white mb-6 tracking-tighter">
-                ${currentPlanes[selectedPlan].precio.toLocaleString()}
-                <span className="text-sm opacity-40 font-bold lowercase tracking-normal pl-1">
-                   {selectedPlan === 'mensual' ? '/mes' : selectedPlan === 'semestral' ? '/sem' : '/año'}
-                </span>
-             </h4>
-             
-             <div className="w-full transform hover:scale-105 transition-transform duration-300">
-               <WompiCheckout 
-                  key={`${planCategory}_${selectedPlan}`}
-                  reference={`SUB_${currentPlanes[selectedPlan].id}_${localStorage.getItem('adminEmpresaId') || '1'}_${Date.now()}`} 
-                  amountInCents={currentPlanes[selectedPlan].amount} 
-               />
-             </div>
-             
-             <p className="text-[9px] text-indigo-300/40 font-black mt-4 uppercase tracking-widest">
-                Activa {currentPlanes[selectedPlan].desc} de forma segura
-             </p>
-          </div>
-
-          {/* Decorative Elements */}
-          <div className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none"></div>
-          <div className="absolute bottom-0 left-0 translate-y-1/2 -translate-x-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none"></div>
-        </div>
+        <PricingPlans isFullPage />
       </section>
 
       <PlanRestrictionModal 

@@ -5,6 +5,7 @@ import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import { useReactToPrint } from "react-to-print";
 import PrintReceipt from "../components/PrintReceipt";
+import NotificationPanel from "../components/NotificationPanel";
 
 function FacturacionElectronica() {
   const navigate = useNavigate();
@@ -70,6 +71,7 @@ function FacturacionElectronica() {
   // Scanner Optimization Refs
   const lastKeystrokeTime = useRef(0);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Receipt Print State
   const [ventaExitosa, setVentaExitosa] = useState(false);
@@ -144,7 +146,7 @@ function FacturacionElectronica() {
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
-    
+
     const now = Date.now();
     const isFast = now - lastKeystrokeTime.current < 50;
     lastKeystrokeTime.current = now;
@@ -153,7 +155,7 @@ function FacturacionElectronica() {
 
     if (isFast && val.length > 2) {
       scanTimeoutRef.current = setTimeout(() => {
-        handleSearchKeyPress({ key: 'Enter', preventDefault: () => {} } as any);
+        handleSearchKeyPress({ key: 'Enter', preventDefault: () => { } } as any);
       }, 150);
     } else {
       scanTimeoutRef.current = setTimeout(() => {
@@ -199,7 +201,7 @@ function FacturacionElectronica() {
       if (search.trim() !== '') {
         e.preventDefault();
         const barcode = search.trim();
-        
+
         // 1. Búsqueda local
         const matchedProduct = productos.find(p =>
           p.referencia && p.referencia.trim().toLowerCase() === barcode.toLowerCase()
@@ -332,6 +334,9 @@ function FacturacionElectronica() {
     setFeExitoData(null);
     setItemsParaRecibo([]);
     setTotalesRecibo(null);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
   };
 
   const compartirWhatsApp = () => {
@@ -434,15 +439,20 @@ function FacturacionElectronica() {
             </div>
           </div>
 
+
+          <NotificationPanel />
+
           <div className="relative group mt-6">
             <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 text-xl group-focus-within:text-blue-500 transition-colors">🔍</span>
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Escribe el nombre del producto o escanea código..."
               value={search}
               onChange={(e) => handleSearchChange(e.target.value)}
               onKeyDown={handleSearchKeyPress}
               className={`w-full pl-16 pr-6 py-5 bg-white border rounded-3xl outline-none transition-all duration-300 font-semibold text-slate-700 placeholder:text-slate-300 ${scanError ? 'border-red-500 ring-4 ring-red-50 bg-red-50 shadow-inner' : 'border-slate-200 focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/5'}`}
+              autoFocus
             />
           </div>
         </div>

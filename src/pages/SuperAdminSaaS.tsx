@@ -51,6 +51,32 @@ const SuperAdminSaaS = () => {
     fetchData();
   }, []);
 
+  const handleManualActivate = async (empresaId: number, dias: number, nombre: string) => {
+    const planName = dias === 30 ? 'MENSUAL' : dias === 180 ? 'SEMESTRAL' : 'ANUAL';
+    if (!window.confirm(`⚠️ ACTIVACIÓN MANUAL\n\n¿Deseas activar el plan ${planName} (${dias} días) para "${nombre.toUpperCase()}"?\n\nEsta acción registrará el pago como físico/manual.`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      // Calculamos un monto sugerido basado en la config actual para el historial
+      const monto = dias === 30 ? config.precio_mes_centavos / 100 : 
+                    dias === 180 ? config.precio_semestre_centavos / 100 : 
+                    config.precio_anio_centavos / 100;
+
+      await API.post('/suscripciones/superadmin/activar-manual', { 
+        empresa_id: empresaId, 
+        dias, 
+        monto 
+      });
+      alert('✅ Suscripción activada correctamente.');
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error en la activación manual.');
+      setLoading(false);
+    }
+  };
+
   const handleDeleteEmpresa = async (id: number, nombre: string) => {
     if (!window.confirm(`⚠️ ¿ESTÁS SEGURO DE ELIMINAR A "${nombre.toUpperCase()}"?\n\nEsta acción es IRREVERSIBLE y borrará:\n- Todos sus productos e inventario.\n- Todas sus facturas de venta y compra.\n- Todos sus usuarios y configuraciones.\n- Todo rastro en la base de datos.`)) {
       return;
@@ -202,18 +228,40 @@ const SuperAdminSaaS = () => {
                       ${(Number(emp.total_recaudado) || 0).toLocaleString('es-CO')}
                     </td>
                     <td style={{ padding: '1rem', textAlign: 'center' }}>
-                      <button 
-                        onClick={() => handleDeleteEmpresa(emp.id, emp.nombre_comercial)}
-                        style={{ 
-                          background: '#fee2e2', color: '#ef4444', border: 'none', padding: '8px 12px', borderRadius: '8px', 
-                          cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => (e.currentTarget.style.background = '#fecaca')}
-                        onMouseOut={(e) => (e.currentTarget.style.background = '#fee2e2')}
-                        title="Eliminar Empresa Permanentemente"
-                      >
-                        🗑️ Borrar
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button 
+                          onClick={() => handleManualActivate(emp.id, 30, emp.nombre_comercial)}
+                          style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                          title="Activar 30 Días (Manual)"
+                        >
+                          📅 +30d
+                        </button>
+                        <button 
+                          onClick={() => handleManualActivate(emp.id, 180, emp.nombre_comercial)}
+                          style={{ background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                          title="Activar 180 Días (Manual)"
+                        >
+                          ⚡ +180d
+                        </button>
+                        <button 
+                          onClick={() => handleManualActivate(emp.id, 365, emp.nombre_comercial)}
+                          style={{ background: '#fff7ed', color: '#ea580c', border: '1px solid #fed7aa', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                          title="Activar 365 Días (Manual)"
+                        >
+                          🏆 +365d
+                        </button>
+
+                        <button 
+                          onClick={() => handleDeleteEmpresa(emp.id, emp.nombre_comercial)}
+                          style={{ 
+                            background: '#fee2e2', color: '#ef4444', border: '1px solid #fca5a5', padding: '6px 10px', borderRadius: '8px', 
+                            cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem', transition: 'all 0.2s'
+                          }}
+                          title="Eliminar Empresa Permanentemente"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

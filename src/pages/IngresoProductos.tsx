@@ -1012,8 +1012,8 @@ function IngresoProductos() {
                           {p.categoria}
                         </span>
                         {p.referencia && (
-                          <span className="text-[8px] font-bold text-slate-300 uppercase tracking-tighter font-mono bg-slate-50/50 px-1.5 py-1 rounded border border-slate-100/50">
-                            SKU: {p.referencia}
+                          <span className="text-[9px] font-normal text-slate-950 uppercase tracking-tighter font-mono bg-white px-2 py-1 rounded border border-slate-200">
+                            REF: {p.referencia}
                           </span>
                         )}
                       </div>

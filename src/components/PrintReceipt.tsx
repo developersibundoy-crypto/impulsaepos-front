@@ -19,10 +19,105 @@ interface PrintReceiptProps {
   historialPagos?: Array<{ fecha: string; monto: number; cajero_nombre?: string; [key: string]: any }>;
   pagoEfectivoMixto?: number;
   pagoTransferenciaMixto?: number;
+  // Nuevos campos para cierre de caja
+  isCierreCaja?: boolean;
+  cierreData?: {
+    cajero_nombre?: string;
+    base_caja: number;
+    total_ventas: number;
+    total_efectivo: number;
+    total_transferencia: number;
+    total_ingresos: number;
+    total_salidas: number;
+    valor_esperado: number;
+    valor_reportado: number;
+    diferencia: number;
+    fecha_apertura: string | Date;
+    fecha_cierre?: string | Date;
+  };
 }
 
 const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
-  ({ empresa, numero, fecha, cliente, cajero, metodoPago, items, iva, total, vuelto, efectivoRecibido, isSeparado, totalAbonado, saldoPendiente, historialPagos, pagoEfectivoMixto, pagoTransferenciaMixto }, ref) => {
+  ({ empresa, numero, fecha, cliente, cajero, metodoPago, items, iva, total, vuelto, efectivoRecibido, isSeparado, totalAbonado, saldoPendiente, historialPagos, pagoEfectivoMixto, pagoTransferenciaMixto, isCierreCaja, cierreData }, ref) => {
+    
+    if (isCierreCaja && cierreData) {
+      return (
+        <div 
+          ref={ref} 
+          className="w-[80mm] max-w-[300px] p-4 bg-white text-black font-sans box-border" 
+          style={{ margin: '0 auto' }}
+        >
+          <div className="text-center mb-4">
+            <h1 className="text-lg font-bold uppercase mb-1">{empresa?.nombre_empresa || "MI EMPRESA"}</h1>
+            <p className="text-sm font-black border-y-2 border-black py-1 uppercase mt-2">Reporte de Cierre de Caja</p>
+          </div>
+
+          <div className="space-y-1.5 text-xs mb-4">
+            <div className="flex justify-between">
+              <span className="font-bold">Cajero:</span>
+              <span className="uppercase">{cierreData.cajero_nombre || 'N/A'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold">Apertura:</span>
+              <span>{new Date(cierreData.fecha_apertura).toLocaleString('es-CO')}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-bold">Cierre:</span>
+              <span>{cierreData.fecha_cierre ? new Date(cierreData.fecha_cierre).toLocaleString('es-CO') : new Date().toLocaleString('es-CO')}</span>
+            </div>
+          </div>
+
+          <div className="border-t border-black pt-2 space-y-2">
+            <div className="flex justify-between text-xs">
+              <span>Base Inicial:</span>
+              <span className="font-bold">{formatCOP(cierreData.base_caja)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span>(+) Ventas Totales:</span>
+              <span className="font-bold">{formatCOP(cierreData.total_ventas)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-blue-700">
+              <span className="pl-2">Efectivo:</span>
+              <span>{formatCOP(cierreData.total_efectivo)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-blue-700">
+              <span className="pl-2">Transferencia:</span>
+              <span>{formatCOP(cierreData.total_transferencia)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-emerald-600">
+              <span>(+) Otros Ingresos:</span>
+              <span>{formatCOP(cierreData.total_ingresos)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-rose-600">
+              <span>(-) Salidas/Gastos:</span>
+              <span>{formatCOP(cierreData.total_salidas)}</span>
+            </div>
+          </div>
+
+          <div className="border-t-2 border-black mt-4 pt-3 space-y-3">
+             <div className="flex justify-between text-sm font-black">
+                <span>EFECTIVO ESPERADO:</span>
+                <span>{formatCOP(cierreData.valor_esperado)}</span>
+             </div>
+             <div className="flex justify-between text-sm font-black border-b border-dashed border-black pb-2">
+                <span>EFECTIVO REPORTADO:</span>
+                <span>{formatCOP(cierreData.valor_reportado)}</span>
+             </div>
+             <div className={`flex justify-between text-sm font-black ${cierreData.diferencia === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                <span>DIFERENCIA:</span>
+                <span>{formatCOP(cierreData.diferencia)}</span>
+             </div>
+          </div>
+
+          <div className="mt-10 pt-10 border-t border-dashed border-gray-400 text-center text-[10px]">
+             <div className="w-40 mx-auto border-t border-black mb-1"></div>
+             <p className="font-bold uppercase">Firma del Cajero</p>
+             <p className="mt-4">{new Date().toLocaleString()}</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div 
         ref={ref} 

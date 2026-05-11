@@ -9,6 +9,7 @@ import { useCaja } from "../components/CajaContext";
 import { hasAccess } from "../utils/auth";
 import IngresoProductos from "./IngresoProductos";
 import Separados from "./Separados";
+import NotificationPanel from "../components/NotificationPanel";
 
 // CartItem extiende Producto pero fuerza id a ser requerido (los productos del carrito SIEMPRE tienen ID del backend)
 interface CartItem extends Omit<Producto, 'id'> {
@@ -137,6 +138,7 @@ function Productos() {
   // Scanner Optimization Refs
   const lastKeystrokeTime = useRef(0);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Tab Handlers
   const nuevaTab = () => {
@@ -238,6 +240,9 @@ function Productos() {
     setMetodoPago("Efectivo");
     setSearch("");
     setFacturaIdImpresion(null);
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
   }, [activeTabId, tabs]);
 
   const successBtnRef = useRef<HTMLButtonElement>(null);
@@ -799,9 +804,13 @@ function Productos() {
             </div>
           </div>
 
+
+          <NotificationPanel />
+
           <div className="relative group">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors text-lg">🔍</span>
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Escanea o busca por nombre..."
               value={search}

@@ -23,6 +23,7 @@ import InventarioAdmin from "./pages/InventarioAdmin";
 import Kardex from "./pages/Kardex";
 import FacturacionElectronica from "./pages/FacturacionElectronica";
 import ConfiguracionDian from "./pages/ConfiguracionDian";
+import Renovacion from "./pages/Renovacion";
 
 import "./index.css";
 
@@ -360,6 +361,7 @@ function App() {
 
             <Route path="/login" element={<Login />} />
             <Route path="/registro-saas" element={<RegistroSaaS />} />
+            <Route path="/renovacion" element={<Renovacion />} />
             
             <Route path="/" element={<AdminRoute><Productos /></AdminRoute>} />
             

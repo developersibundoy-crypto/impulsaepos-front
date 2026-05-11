@@ -44,6 +44,9 @@ export default function Separados() {
   const [viewAbonos, setViewAbonos] = useState<any[]>([]);
   const [abonoInput, setAbonoInput] = useState("");
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
   const [cajeros, setCajeros] = useState<any[]>([]);
   const [cajeroId, setCajeroId] = useState(localStorage.getItem('adminCajeroId') || "");
   const [phoneWS, setPhoneWS] = useState("");
@@ -57,6 +60,7 @@ export default function Separados() {
   const [metodoPago, setMetodoPago] = useState("Efectivo");
   const [pagoEfectivo, setPagoEfectivo] = useState("");
   const [pagoTransferencia, setPagoTransferencia] = useState("");
+  const [pagoRecibido, setPagoRecibido] = useState("");
 
   const facturaContentRef = useRef<HTMLDivElement>(null);
   const reactToPrintFactura = useReactToPrint({ contentRef: facturaContentRef });
@@ -128,28 +132,55 @@ export default function Separados() {
     if (abono > total) return alert("El abono inicial no puede ser mayor al total");
 
     try {
-      const payload = {
-        cliente_id: parseInt(newClienteId),
-        detalles: cart,
-        total,
-        abono_inicial: abono,
-        metodo_pago: metodoPago,
-        pago_efectivo: parseFloat(pagoEfectivo) || 0,
-        pago_transferencia: parseFloat(pagoTransferencia) || 0,
-        cajero_id: cajeroId ? parseInt(cajeroId) : null
-      };
+      const total = cart.reduce((acc, c) => acc + (c.precio_venta * c.qty), 0);
+      const abono = parseFloat(initialPayment) || 0;
 
-      await API.post("/separados", payload);
-      alert("✅ Separado creado exitosamente");
+      if (isEditing && editingId) {
+        await API.put(`/separados/${editingId}`, {
+          detalles: cart,
+          total
+        });
+        alert("✅ Separado actualizado exitosamente");
+      } else {
+        if (abono > total) return alert("El abono inicial no puede ser mayor al total");
+        const payload = {
+          cliente_id: parseInt(newClienteId),
+          detalles: cart,
+          total,
+          abono_inicial: abono,
+          metodo_pago: metodoPago,
+          pago_efectivo: parseFloat(pagoEfectivo) || 0,
+          pago_transferencia: parseFloat(pagoTransferencia) || 0,
+          cajero_id: cajeroId ? parseInt(cajeroId) : null
+        };
+
+        await API.post("/separados", payload);
+        alert("✅ Separado creado exitosamente");
+      }
+
       setShowNewModal(false);
       setCart([]);
       setNewClienteId("");
       setInitialPayment("");
+      setPagoRecibido("");
+      setIsEditing(false);
+      setEditingId(null);
       fetchSeparados();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Error al crear el separado");
+      alert(error.response?.data?.error || "Error al procesar el separado");
     }
+  };
+
+  const handleEdit = (sep: any) => {
+    setIsEditing(true);
+    setEditingId(sep.id);
+    setNewClienteId(sep.cliente_id.toString());
+    const items = typeof sep.detalles_json === 'string' ? JSON.parse(sep.detalles_json) : sep.detalles_json;
+    setCart(items || []);
+    setInitialPayment("");
+    setShowNewModal(true);
+    setViewSeparado(null);
   };
 
   const addProdToCart = (prod: Producto) => {
@@ -284,6 +315,7 @@ export default function Separados() {
       setMetodoPago("Efectivo");
       setPagoEfectivo("");
       setPagoTransferencia("");
+      setPagoRecibido("");
       openView(viewSeparado.id);
       fetchSeparados();
     } catch (e: any) {
@@ -294,7 +326,12 @@ export default function Separados() {
   const handleCompletar = async () => {
     if (!cajeroId) return alert("Selecciona el cajero vendedor");
     try {
-      const resp = await API.put(`/separados/${viewSeparado.id}/completar`, { cajero_id: cajeroId ? parseInt(cajeroId) : null });
+      const resp = await API.put(`/separados/${viewSeparado.id}/completar`, { 
+        cajero_id: cajeroId ? parseInt(cajeroId) : null,
+        metodo_pago: metodoPago,
+        pago_efectivo: parseFloat(pagoEfectivo) || 0,
+        pago_transferencia: parseFloat(pagoTransferencia) || 0
+      });
 
       if (window.confirm("¿Imprimir comprobante de entrega?")) {
         API.get(`/ventas/${resp.data.factura_id}`)
@@ -384,7 +421,13 @@ export default function Separados() {
             <p className="text-blue-400 font-medium text-lg italic">Créditos, abonos y reserva de inventario premium.</p>
           </div>
           <button
-            onClick={() => setShowNewModal(true)}
+            onClick={() => {
+              setIsEditing(false);
+              setEditingId(null);
+              setCart([]);
+              setNewClienteId("");
+              setShowNewModal(true);
+            }}
             className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-[24px] text-xs font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.3)] hover:shadow-blue-300 hover:-translate-y-1 transition-all active:scale-95"
           >
             + Iniciar Nuevo Trámite
@@ -479,7 +522,9 @@ export default function Separados() {
             <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setShowNewModal(false)}></div>
             <div className="relative w-full max-w-2xl bg-white rounded-[48px] shadow-2xl overflow-hidden animate-in zoom-in duration-400 flex flex-col max-h-[90vh]">
               <div className="p-10 border-b border-slate-100 flex justify-between items-center shrink-0">
-                <h2 className="text-2xl font-medium text-slate-900 tracking-tight">Iniciar Nuevo Separado</h2>
+                <h2 className="text-2xl font-medium text-slate-900 tracking-tight">
+                  {isEditing ? `Editando Separado #${editingId}` : 'Iniciar Nuevo Separado'}
+                </h2>
                 <button onClick={() => setShowNewModal(false)} className="text-3xl text-slate-300 hover:text-slate-500 transition-colors">&times;</button>
               </div>
 
@@ -591,27 +636,62 @@ export default function Separados() {
                     </div>
                     <div className="bg-amber-50/30 p-3 rounded-xl border border-amber-50">
                       <label className="text-[9px] font-bold text-amber-600 uppercase tracking-widest mb-1 block">Abono Inicial ($)</label>
-                      <input type="number" value={initialPayment} onChange={e => { setInitialPayment(e.target.value); setAbonoInput(e.target.value); }} placeholder="0.00" className="w-full bg-transparent font-black text-amber-700 text-xl outline-none" />
+                      <input 
+                        type="number" 
+                        value={initialPayment} 
+                        onChange={e => {
+                          const total = cart.reduce((acc, c) => acc + (c.precio_venta * c.qty), 0);
+                          const val = parseFloat(e.target.value) || 0;
+                          if (val > total) {
+                            setInitialPayment(total.toString());
+                          } else {
+                            setInitialPayment(e.target.value);
+                          }
+                        }} 
+                        placeholder="0.00" 
+                        className="w-full bg-transparent font-black text-amber-700 text-xl outline-none" 
+                      />
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest ml-1">Forma de Pago del Abono</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {["Efectivo", "Transferencia", "Mixto"].map((m) => (
-                        <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100' : 'bg-white text-blue-400 border-blue-100 hover:border-blue-300'}`}>
-                          {m}
-                        </button>
-                      ))}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Efectivo Recibido</label>
+                      <input 
+                        type="number" 
+                        value={pagoRecibido} 
+                        onChange={e => setPagoRecibido(e.target.value)} 
+                        placeholder="0.00" 
+                        className="w-full bg-transparent font-black text-slate-700 text-xl outline-none" 
+                      />
                     </div>
-
-                    {metodoPago === "Mixto" && (
-                      <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
-                        <input type="number" placeholder="Efectivo" value={pagoEfectivo} onChange={e => setPagoEfectivo(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-center text-blue-700" />
-                        <input type="number" placeholder="Transferencia" value={pagoTransferencia} onChange={e => setPagoTransferencia(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-center text-blue-700" />
+                    <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100">
+                      <label className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mb-1 block">Vueltas (Cambio)</label>
+                      <div className="text-xl font-black text-emerald-700 tracking-tighter">
+                        {formatCOP(Math.max(0, (parseFloat(pagoRecibido) || 0) - (parseFloat(initialPayment) || 0)))}
                       </div>
-                    )}
+                    </div>
                   </div>
+
+                  {!isEditing && (
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest ml-1">Forma de Pago del Abono</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {["Efectivo", "Transferencia", "Mixto"].map((m) => (
+                          <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100' : 'bg-white text-blue-400 border-blue-100 hover:border-blue-300'}`}>
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+
+                      {metodoPago === "Mixto" && (
+                        <div className="grid grid-cols-2 gap-3 animate-in fade-in duration-300">
+                          <input type="number" placeholder="Efectivo" value={pagoEfectivo} onChange={e => setPagoEfectivo(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-center text-blue-700" />
+                          <input type="number" placeholder="Transferencia" value={pagoTransferencia} onChange={e => setPagoTransferencia(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-center text-blue-700" />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -620,7 +700,7 @@ export default function Separados() {
                   onClick={handleCreate}
                   className="px-12 py-3.5 bg-gradient-to-r from-blue-600 to-blue-800 text-white font-black rounded-2xl shadow-lg shadow-blue-200 hover:shadow-blue-300 hover:-translate-y-0.5 transition-all uppercase tracking-widest text-[11px] active:scale-95"
                 >
-                  Confirmar Separado
+                  {isEditing ? 'Guardar Cambios' : 'Confirmar Separado'}
                 </button>
               </div>
             </div>
@@ -710,9 +790,42 @@ export default function Separados() {
                             ))}
                           </div>
 
-                          <div className="flex gap-2">
-                            <input type="number" placeholder="Monto Total Abono..." value={abonoInput} onChange={e => setAbonoInput(e.target.value)} className="flex-1 px-4 py-2 bg-white border border-amber-200 rounded-xl font-bold text-amber-700 outline-none text-sm" />
-                            <button onClick={handleAbonar} className="px-6 py-2 bg-amber-600 text-white rounded-xl font-bold text-[9px] uppercase tracking-widest shadow-lg shadow-amber-100">Registrar Abono</button>
+                          <div className="space-y-2">
+                             <div className="flex gap-2">
+                               <div className="flex-1">
+                                  <label className="text-[8px] font-bold text-amber-500 uppercase ml-1">Monto a Abonar</label>
+                                  <input 
+                                    type="number" 
+                                    placeholder="0.00" 
+                                    value={abonoInput} 
+                                    onChange={e => {
+                                      const val = parseFloat(e.target.value) || 0;
+                                      const max = parseFloat(viewSeparado.saldo_pendiente);
+                                      if (val > max) {
+                                        setAbonoInput(max.toString());
+                                      } else {
+                                        setAbonoInput(e.target.value);
+                                      }
+                                    }} 
+                                    className="w-full px-4 py-2 bg-white border border-amber-200 rounded-xl font-bold text-amber-700 outline-none text-sm" 
+                                  />
+                               </div>
+                               <div className="flex-1">
+                                  <label className="text-[8px] font-bold text-slate-400 uppercase ml-1">Efectivo Recibido</label>
+                                  <input type="number" placeholder="0.00" value={pagoRecibido} onChange={e => setPagoRecibido(e.target.value)} className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none text-sm" />
+                               </div>
+                             </div>
+
+                             {parseFloat(pagoRecibido) > 0 && (
+                               <div className="flex justify-between items-center px-4 py-2 bg-emerald-100/50 rounded-xl border border-emerald-200 animate-in slide-in-from-top-1 duration-300">
+                                 <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Vueltas (Cambio):</span>
+                                 <span className="text-sm font-black text-emerald-700">
+                                   {formatCOP(Math.max(0, (parseFloat(pagoRecibido) || 0) - (parseFloat(abonoInput) || 0)))}
+                                 </span>
+                               </div>
+                             )}
+
+                             <button onClick={handleAbonar} className="w-full py-2.5 bg-amber-600 text-white rounded-xl font-bold text-[9px] uppercase tracking-widest shadow-lg shadow-amber-100 hover:-translate-y-0.5 transition-all">Registrar Abono</button>
                           </div>
 
                           {metodoPago === "Mixto" && (
@@ -724,11 +837,27 @@ export default function Separados() {
                         </div>
                       </div>
                     ) : (
-                      <div className="bg-emerald-50 p-4 rounded-3xl border border-emerald-100 text-center space-y-3">
+                      <div className="bg-emerald-50 p-4 rounded-3xl border border-emerald-100 text-center space-y-4">
                         <div className="space-y-1">
                           <h4 className="font-medium text-emerald-800 text-sm uppercase">¡Total Liquidado!</h4>
-                          <p className="text-[9px] font-medium text-emerald-600 uppercase tracking-widest">Ya puedes entregar la mercancía.</p>
+                          <p className="text-[9px] font-medium text-emerald-600 uppercase tracking-widest">Selecciona el método de pago para el ticket final.</p>
                         </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          {["Efectivo", "Transferencia", "Mixto"].map((m) => (
+                            <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-lg text-[8px] font-bold uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-100 hover:border-emerald-300'}`}>
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+
+                        {metodoPago === "Mixto" && (
+                          <div className="grid grid-cols-2 gap-2 animate-in fade-in duration-300">
+                            <input type="number" placeholder="Efectivo" value={pagoEfectivo} onChange={e => setPagoEfectivo(e.target.value)} className="w-full px-4 py-2 bg-white border border-emerald-100 rounded-xl text-xs font-bold text-center" />
+                            <input type="number" placeholder="Transferencia" value={pagoTransferencia} onChange={e => setPagoTransferencia(e.target.value)} className="w-full px-4 py-2 bg-white border border-emerald-100 rounded-xl text-xs font-bold text-center" />
+                          </div>
+                        )}
+
                         <select value={cajeroId} onChange={e => setCajeroId(e.target.value)} className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl font-medium text-emerald-700 outline-none uppercase text-[10px]">
                           <option value="">-- Seleccionar Vendedor --</option>
                           {cajeros.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -742,7 +871,10 @@ export default function Separados() {
 
               <div className="p-6 bg-slate-900 flex justify-between items-center gap-4">
                 {viewSeparado.estado === 'Pendiente' ? (
-                  <button onClick={handleAnular} className="text-[10px] text-rose-400 hover:text-rose-300 uppercase tracking-widest transition-colors underline underline-offset-4">Anular</button>
+                  <div className="flex gap-4">
+                    <button onClick={handleAnular} className="text-[10px] text-rose-400 hover:text-rose-300 uppercase tracking-widest transition-colors underline underline-offset-4">Anular</button>
+                    <button onClick={() => handleEdit(viewSeparado)} className="text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-widest transition-colors underline underline-offset-4 font-bold">📝 Editar / Agregar Productos</button>
+                  </div>
                 ) : <div />}
                 <div className="flex-1 flex gap-2">
                   <div className="flex-1 flex items-center bg-white/5 rounded-xl border border-white/10 px-3">

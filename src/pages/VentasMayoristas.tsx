@@ -4,6 +4,7 @@ import { useReactToPrint } from "react-to-print";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import PrintReceipt from "../components/PrintReceipt";
+import NotificationPanel from "../components/NotificationPanel";
 import { useCaja } from "../components/CajaContext";
 import { socket, joinEmpresaRoom } from "../utils/socket";
 import { hasAccess } from "../utils/auth";
@@ -122,6 +123,7 @@ function VentasMayoristas() {
   // Scanner Optimization Refs
   const lastKeystrokeTime = useRef(0);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Tab Handlers
   const nuevaTab = () => {
@@ -200,7 +202,7 @@ function VentasMayoristas() {
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
-    
+
     const now = Date.now();
     const isFast = now - lastKeystrokeTime.current < 50;
     lastKeystrokeTime.current = now;
@@ -209,7 +211,7 @@ function VentasMayoristas() {
 
     if (isFast && val.length > 2) {
       scanTimeoutRef.current = setTimeout(() => {
-        handleSearchKeyPress({ key: 'Enter', preventDefault: () => {}, stopPropagation: () => {} } as any);
+        handleSearchKeyPress({ key: 'Enter', preventDefault: () => { }, stopPropagation: () => { } } as any);
       }, 150);
     } else {
       scanTimeoutRef.current = setTimeout(() => {
@@ -328,9 +330,9 @@ function VentasMayoristas() {
     if (e.key === 'Enter') {
       if (search.trim() !== '') {
         e.preventDefault();
-        e.stopPropagation(); 
+        e.stopPropagation();
         const barcode = search.trim();
-        
+
         // 1. Intentar buscar localmente
         const matchedProduct = productos.find(p =>
           p.referencia && p.referencia.trim().toLowerCase() === barcode.toLowerCase()
@@ -419,6 +421,9 @@ function VentasMayoristas() {
       setClienteId("1");
       setClienteSearch("");
     }
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
   }, [activeTabId, tabs]);
 
   const confirmarVenta = useCallback(async () => {
@@ -683,9 +688,13 @@ function VentasMayoristas() {
             </div>
           </div>
 
+
+          <NotificationPanel />
+
           <div className="relative group">
             <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-sky-600 transition-colors text-xl">🚚</span>
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Escanea SKU o localiza mercancía por nombre..."
               value={search}
@@ -872,72 +881,67 @@ function VentasMayoristas() {
               {carrito.map((item: any) => (
                 <div
                   key={item.id}
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "+" || e.key === "Add") {
-                      e.preventDefault();
-                      agregarAlCarrito(item);
-                    } else if (e.key === "-" || e.key === "Subtract") {
-                      e.preventDefault();
-                      removerDelCarrito(item);
-                    }
-                  }}
-                  className="group relative flex flex-col p-2 bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md hover:border-indigo-100 transition-all outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="group flex items-center gap-2 p-1.5 bg-white border border-slate-100 rounded-xl hover:border-indigo-100 transition-all outline-none"
                 >
-                  {/* Fila 1: Todo el control operativo */}
-                  <div className="flex items-center gap-2 min-h-[32px] py-1">
-                    {/* Descripción */}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-[10px] font-medium text-slate-900 uppercase truncate">{item.nombre}</h4>
-                    </div>
+                  {/* Producto e Info */}
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-[10px] text-slate-900 uppercase truncate font-bold leading-tight">
+                      {item.nombre}
+                    </h4>
+                    <span className="text-[7px] text-slate-400 uppercase font-normal block mt-0.5">
+                      REF: {item.referencia || 'SIN REF'}
+                    </span>
+                  </div>
 
-                    {/* Cantidad */}
-                    <div className="flex items-center bg-slate-100/50 rounded-xl p-1 gap-1 border border-slate-200/50 shrink-0">
-                      <button onClick={() => removerDelCarrito(item)} className="w-10 h-10 flex items-center justify-center text-lg text-slate-400 bg-white hover:text-rose-600 rounded-lg shadow-sm font-bold">－</button>
+                  {/* Cantidad Ultra Compacta */}
+                  <div className="flex items-center bg-slate-50/50 rounded-lg p-0.5 gap-0.5 border border-slate-100 shrink-0">
+                    <button 
+                      onClick={() => removerDelCarrito(item)} 
+                      className="w-5 h-5 flex items-center justify-center text-[10px] text-slate-400 bg-white hover:text-rose-600 rounded transition-colors font-normal"
+                    >
+                      －
+                    </button>
+                    <input
+                      type="number"
+                      value={item.qty === 0 ? "" : item.qty}
+                      onChange={(e) => actualizarCantidad(item.id, e.target.value)}
+                      className="w-7 text-center text-[10px] font-normal bg-transparent outline-none text-slate-700"
+                    />
+                    <button 
+                      onClick={() => agregarAlCarrito(item)} 
+                      className="w-5 h-5 flex items-center justify-center text-[10px] text-slate-400 bg-white hover:text-indigo-600 rounded transition-colors font-normal"
+                    >
+                      ＋
+                    </button>
+                  </div>
+
+                  {/* Descuento y Precio Agrupados */}
+                  <div className="flex items-center gap-2 shrink-0 border-l border-slate-50 pl-2">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[7px] font-normal text-slate-400 uppercase">D:</span>
                       <input
                         type="number"
-                        value={item.qty === 0 ? "" : item.qty}
-                        onChange={(e) => actualizarCantidad(item.id, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "+" || e.key === "Add") {
-                            e.preventDefault();
-                            agregarAlCarrito(item);
-                          } else if (e.key === "-" || e.key === "Subtract") {
-                            e.preventDefault();
-                            removerDelCarrito(item);
-                          }
-                        }}
-                        className="w-10 text-center text-sm font-bold bg-transparent outline-none text-slate-800"
-                      />
-                      <button onClick={() => agregarAlCarrito(item)} className="w-10 h-10 flex items-center justify-center text-lg text-slate-400 bg-white hover:text-indigo-600 rounded-lg shadow-sm font-bold">＋</button>
-                    </div>
-
-                    {/* Descuento */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="text-[8px] font-medium text-slate-400">B:</span>
-                      <input
-                        type="number"
-                        className="w-10 py-1 bg-white border border-indigo-100 rounded text-center text-sm font-semibold text-indigo-700 outline-none"
+                        className="w-8 bg-indigo-50/30 text-center text-[10px] font-normal text-indigo-600 outline-none border border-indigo-100/50 rounded"
                         value={item.descuento || 10}
                         onChange={e => handleDescuentoChange(item.id, e.target.value)}
                       />
                     </div>
 
-                    {/* Precio Final */}
-                    <div className="text-right min-w-[80px] shrink-0">
-                      <span className="text-sm font-semibold text-slate-950 tracking-tighter border-l border-slate-100 pl-2">
+                    {/* Precio Total Item */}
+                    <div className="text-right min-w-[75px]">
+                      <div className="text-[11px] font-normal text-slate-800 tracking-tighter">
                         {formatCOP((item.precio_venta * (1 - (item.descuento || 0) / 100)) * item.qty)}
-                      </span>
+                      </div>
                     </div>
-
-                    {/* Eliminar */}
-                    <button onClick={() => eliminarDelCarrito(item)} className="text-slate-300 hover:text-rose-500 text-xl font-light px-1 leading-none">×</button>
                   </div>
 
-                  {/* Fila 2: Referencia Bold */}
-                  <div className="flex items-center h-5 mt-0.5 border-t border-slate-50 pt-0.5">
-                    <span className="text-[11px] font-medium text-slate-950 uppercase tracking-tight truncate">REF: {item.referencia || 'SIN REFERENCIA'}</span>
-                  </div>
+                  {/* Eliminar */}
+                  <button 
+                    onClick={() => eliminarDelCarrito(item)} 
+                    className="w-5 h-5 flex items-center justify-center text-slate-200 hover:text-rose-400 transition-colors text-base font-light shrink-0"
+                  >
+                    ×
+                  </button>
                 </div>
               ))}
             </div>

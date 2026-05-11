@@ -2,6 +2,9 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useCaja } from './CajaContext';
 import { formatCOP } from '../utils/format';
+import { useReactToPrint } from 'react-to-print';
+import PrintReceipt from './PrintReceipt';
+import API from '../api/api';
 
 
 export const AperturaCajaModal: React.FC = () => {
@@ -97,6 +100,10 @@ export const CierreCajaModal: React.FC<{ isOpen: boolean; onClose: () => void; o
   const { sesion, cerrarCaja, limpiarSesion, verificarEstado } = useCaja();
   const [reportado, setReportado] = useState('');
   const [loading, setLoading] = useState(false);
+  const [empresa, setEmpresa] = useState<any>(null);
+
+  const printRef = useRef<HTMLDivElement>(null);
+  const reactToPrint = useReactToPrint({ contentRef: printRef });
 
   // Cache sesion data so it survives after cerrarCaja clears the context
   const cachedSesion = useRef<any>(null);
@@ -123,6 +130,9 @@ export const CierreCajaModal: React.FC<{ isOpen: boolean; onClose: () => void; o
       setPosition(null); // null = use CSS centering
       // Sincronizar datos automáticamente al abrir
       verificarEstado();
+
+      // Cargar info de empresa para el ticket
+      API.get('/empresa').then(res => setEmpresa(res.data)).catch(console.error);
 
       // Socket Listeners for Real-time adjustments
       import("../utils/socket").then(({ socket }) => {
@@ -427,13 +437,59 @@ export const CierreCajaModal: React.FC<{ isOpen: boolean; onClose: () => void; o
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
-                    <>CERRAR TURNO Y GENERAR REPORTE <span className="text-lg">🔐</span></>
+                    <>CERRAR TURNO DEFINITIVO <span className="text-lg">🔐</span></>
                   )}
                 </button>
+                
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => reactToPrint()}
+                    disabled={!reportado}
+                    className="flex-1 py-4 bg-white border-2 border-slate-200 text-slate-600 font-black rounded-2xl hover:bg-slate-50 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2"
+                  >
+                    🖨️ IMPRIMIR REPORTE
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-4 bg-slate-100 text-slate-400 font-black rounded-2xl hover:bg-rose-50 hover:text-rose-500 transition-all text-[10px] uppercase tracking-widest"
+                  >
+                    CONTINUAR LUEGO
+                  </button>
+                </div>
+                
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.4em] text-center">Seguridad Bancaria Activada</p>
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Componente de Impresión Oculto */}
+        <div style={{ display: 'none' }}>
+           <PrintReceipt 
+              ref={printRef}
+              empresa={empresa}
+              isCierreCaja={true}
+              numero={`CIERRE-${activeSesion.id}`}
+              fecha={new Date()}
+              cliente="REPORTE INTERNO"
+              total={0}
+              items={[]}
+              cierreData={{
+                cajero_nombre: localStorage.getItem('adminName') || 'Cajero',
+                base_caja: activeSesion.base_caja,
+                total_ventas: activeSesion.total_ventas,
+                total_efectivo: activeSesion.total_efectivo,
+                total_transferencia: activeSesion.total_transferencia,
+                total_ingresos: activeSesion.total_ingresos,
+                total_salidas: activeSesion.total_salidas,
+                valor_esperado: activeSesion.valor_esperado,
+                valor_reportado: Number(reportado) || 0,
+                diferencia: (Number(reportado) || 0) - activeSesion.valor_esperado,
+                fecha_apertura: activeSesion.fecha_apertura
+              }}
+           />
         </div>
     </>,
     document.body

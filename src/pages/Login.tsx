@@ -109,8 +109,7 @@ const Login: React.FC = () => {
     } catch (err: any) {
       const data = err.response?.data;
       if (data?.reason === 'expired') {
-        setExpiredData({ empresa_id: data.empresa_id });
-        setError("Tu suscripción ha expirado. Por favor renueva tu acceso para continuar.");
+        navigate(`/renovacion?empresa_id=${data.empresa_id}`);
       } else {
         setError(data?.error || 'Verifique sus datos e intente nuevamente.');
       }

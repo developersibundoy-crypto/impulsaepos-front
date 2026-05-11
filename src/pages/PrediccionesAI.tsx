@@ -130,7 +130,7 @@ function PrediccionesAI() {
       "FECHA DE VENCIMIENTO": p.fecha_vencimiento ? new Date(p.fecha_vencimiento).toLocaleDateString() : "PENDIENTE",
       "CANTIDAD EN STOCK": p.cantidad,
       "DÍAS PARA VENCER": p.dias_faltantes,
-      "ESTADO CRÍTICO": p.dias_faltantes < 0 ? "⚠️ VENCIDO" : (p.dias_faltantes < 7 ? "🛑 CRÍTICO" : "⚠️ PRÓXIMO"),
+      "ESTADO CRÍTICO": p.dias_faltantes < 0 ? "⚠️ VENCIDO" : (p.dias_faltantes < 10 ? "🛑 CRÍTICO" : "⚠️ PRÓXIMO"),
       "ACCIÓN SUGERIDA": p.dias_faltantes < 0 ? "RETIRAR Y CAMBIAR CON PROVEEDOR" : "PONER EN PROMOCIÓN / ROTAR YA"
     }));
 
@@ -286,7 +286,7 @@ function PrediccionesAI() {
                                  <p className="text-white font-black text-lg">{p.cantidad} <span className="text-xs opacity-50 font-medium">UND</span></p>
                               </div>
                               <div className={`px-5 py-2 rounded-2xl flex flex-col items-center justify-center border ${
-                                 p.dias_faltantes < 7 ? 'bg-rose-500/20 border-rose-500/30 text-rose-400' : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                                 p.dias_faltantes < 10 ? 'bg-rose-500/20 border-rose-500/30 text-rose-400' : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
                               }`}>
                                  <span className="text-[9px] font-black uppercase mb-0.5">Vence en</span>
                                  <p className="text-xl font-black leading-none">{p.dias_faltantes} <span className="text-[10px]">días</span></p>
