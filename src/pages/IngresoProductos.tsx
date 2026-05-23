@@ -300,12 +300,26 @@ function IngresoProductos() {
       setProductosIngresados(prev => {
         const updatedList = [...prev];
         const existingItem = updatedList[editIndex];
+
+        // Comprobar si cambió alguna propiedad de configuración
+        const hasConfigChanged = 
+          existingItem.nombre !== nuevoProducto.nombre ||
+          existingItem.categoria !== nuevoProducto.categoria ||
+          parseFloat(String(existingItem.precio_compra)) !== parseFloat(String(nuevoProducto.precio_compra)) ||
+          parseFloat(String(existingItem.precio_venta)) !== parseFloat(String(nuevoProducto.precio_venta)) ||
+          parseFloat(String(existingItem.porcentaje_ganancia)) !== parseFloat(String(nuevoProducto.porcentaje_ganancia)) ||
+          !!existingItem.es_servicio !== !!nuevoProducto.es_servicio ||
+          !!existingItem.permitir_venta_negativa !== !!nuevoProducto.permitir_venta_negativa ||
+          parseFloat(String(existingItem.iva_porcentaje)) !== parseFloat(String(nuevoProducto.iva_porcentaje)) ||
+          existingItem.fecha_vencimiento !== nuevoProducto.fecha_vencimiento;
+
         updatedList[editIndex] = {
           ...existingItem,
           ...nuevoProducto,
           id_lote: existingItem.id_lote,
           inyectado: existingItem.inyectado,
-          cantidad_inyectada: existingItem.cantidad_inyectada || 0
+          cantidad_inyectada: existingItem.cantidad_inyectada || 0,
+          configChanged: hasConfigChanged || !!(existingItem as any).configChanged
         };
         return updatedList;
       });
@@ -322,13 +336,25 @@ function IngresoProductos() {
           const updatedList = [...prev];
           const existingItem = updatedList[existingIndex];
           
+          const hasConfigChanged = 
+            existingItem.nombre !== nuevoProducto.nombre ||
+            existingItem.categoria !== nuevoProducto.categoria ||
+            parseFloat(String(existingItem.precio_compra)) !== parseFloat(String(nuevoProducto.precio_compra)) ||
+            parseFloat(String(existingItem.precio_venta)) !== parseFloat(String(nuevoProducto.precio_venta)) ||
+            parseFloat(String(existingItem.porcentaje_ganancia)) !== parseFloat(String(nuevoProducto.porcentaje_ganancia)) ||
+            !!existingItem.es_servicio !== !!nuevoProducto.es_servicio ||
+            !!existingItem.permitir_venta_negativa !== !!nuevoProducto.permitir_venta_negativa ||
+            parseFloat(String(existingItem.iva_porcentaje)) !== parseFloat(String(nuevoProducto.iva_porcentaje)) ||
+            existingItem.fecha_vencimiento !== nuevoProducto.fecha_vencimiento;
+
           updatedList[existingIndex] = {
             ...existingItem,
             ...nuevoProducto, // Los precios y metadata nuevos sobrescriben los anteriores
             id_lote: existingItem.id_lote, // Mantenemos el ID original de la fila
             cantidad: (Number(existingItem.cantidad) || 0) + nuevoProducto.cantidad,
             inyectado: existingItem.inyectado, // Mantenemos el flag de inyección original
-            cantidad_inyectada: existingItem.cantidad_inyectada || 0
+            cantidad_inyectada: existingItem.cantidad_inyectada || 0,
+            configChanged: hasConfigChanged || !!(existingItem as any).configChanged
           };
           return updatedList;
         });
@@ -360,25 +386,31 @@ function IngresoProductos() {
     
     setIsSavingDraft(true);
     try {
-      // 1. Identificar ítems que necesitan inyección de stock (incremental)
+      // 1. Identificar ítems que necesitan inyección de stock o actualización de configuración
       const itemsParaInyectar = productosIngresados.map(p => {
         const cantInyectada = p.cantidad_inyectada || 0;
         const delta = p.cantidad - cantInyectada;
-        // IMPORTANTE: Enviamos 'delta' para el cálculo del backend y 'cantidad' por compatibilidad
-        return delta > 0 ? { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad } : null;
+        const configChanged = p.configChanged;
+        
+        // Enviamos si hay delta de stock O si cambió alguna configuración y ya estaba inyectado (para actualizar la config)
+        if (delta > 0 || configChanged || !p.inyectado) {
+          return { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad };
+        }
+        return null;
       }).filter(Boolean);
 
       if (itemsParaInyectar.length > 0) {
         // Enviar al backend para sumar al inventario en tiempo real
         await API.post("/productos/inyectar-stock", { items: itemsParaInyectar });
-        setMensajeEstado("🚀 STOCK ACTUALIZADO EN TIEMPO REAL");
+        setMensajeEstado("🚀 STOCK Y CONFIGURACIÓN ACTUALIZADOS EN TIEMPO REAL");
       }
 
-      // 2. Marcar todos como inyectados localmente
+      // 2. Marcar todos como inyectados localmente y limpiar flag de configuración
       const itemsActualizados = productosIngresados.map(p => ({
         ...p,
         cantidad_inyectada: p.cantidad,
-        inyectado: true
+        inyectado: true,
+        configChanged: false
       }));
 
       // 3. Guardar el borrador con el estado actualizado
@@ -405,12 +437,17 @@ function IngresoProductos() {
     if (productosIngresados.length === 0) return;
     setIsSavingBatch(true);
     try {
-      // 1. Inyectar cualquier delta pendiente antes de finalizar
+      // 1. Inyectar cualquier delta o cambio de configuración pendiente antes de finalizar
       const itemsParaInyectar = productosIngresados.map(p => {
         const cantInyectada = p.cantidad_inyectada || 0;
         const delta = p.cantidad - cantInyectada;
-        // IMPORTANTE: Enviamos 'delta' para el cálculo del backend y 'cantidad' por compatibilidad
-        return delta > 0 ? { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad } : null;
+        const configChanged = p.configChanged;
+        
+        // Enviamos si hay delta de stock O si cambió alguna configuración y ya estaba inyectado (para actualizar la config)
+        if (delta > 0 || configChanged || !p.inyectado) {
+          return { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad };
+        }
+        return null;
       }).filter(Boolean);
 
       if (itemsParaInyectar.length > 0) {
@@ -420,7 +457,8 @@ function IngresoProductos() {
       const itemsFinales = productosIngresados.map(p => ({
         ...p,
         cantidad_inyectada: p.cantidad,
-        inyectado: true
+        inyectado: true,
+        configChanged: false
       }));
 
       // 2. Calcular gran total

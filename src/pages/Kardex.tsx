@@ -7,30 +7,60 @@ function Kardex() {
   const [productos, setProductos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [tipo, setTipo] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
 
+  // Pagination states
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+
   useEffect(() => {
-    API.get("/productos").then(res => {
-        const dataArr = Array.isArray(res.data) ? res.data : (res.data.data || []);
-        setProductos(dataArr);
+    // Fetch products dropdown with limit=1000 so it has a complete list
+    API.get("/productos?limit=1000").then(res => {
+      const dataArr = Array.isArray(res.data) ? res.data : (res.data.data || []);
+      setProductos(dataArr);
     }).catch(console.error);
-    fetchKardex();
   }, []);
 
-  const fetchKardex = (prodId?: number) => {
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 450);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // Reset page when any filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, startDate, endDate, tipo, selectedProduct]);
+
+  // Fetch paginated Kardex
+  useEffect(() => {
+    fetchKardex(page, debouncedSearch);
+  }, [page, debouncedSearch, startDate, endDate, tipo, selectedProduct]);
+
+  const fetchKardex = (p: number = page, search: string = debouncedSearch) => {
     setLoading(true);
-    const params: any = {};
+    const params: any = {
+      page: p,
+      limit: 50
+    };
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
     if (tipo) params.tipo = tipo;
-    if (prodId || selectedProduct?.id) params.productoId = prodId || selectedProduct?.id;
+    if (selectedProduct?.id) params.productoId = selectedProduct?.id;
+    if (search) params.search = search;
 
     API.get("/kardex", { params })
       .then(res => {
-        setKardex(Array.isArray(res.data) ? res.data : []);
+        setKardex(Array.isArray(res.data.data) ? res.data.data : []);
+        setTotalPages(res.data.last_page || 1);
+        setTotalRecords(res.data.total || 0);
+        setPage(res.data.page || 1);
         setLoading(false);
       })
       .catch(err => {
@@ -38,16 +68,6 @@ function Kardex() {
         setLoading(false);
       });
   };
-
-  useEffect(() => {
-    fetchKardex();
-  }, [startDate, endDate, tipo, selectedProduct]);
-
-  const filteredKardex = (Array.isArray(kardex) ? kardex : []).filter(k => 
-    (k.producto_nombre || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (k.codigo_barras || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (k.referencia || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const getTipoEstilo = (tipo: string) => {
     switch (tipo) {
@@ -62,8 +82,8 @@ function Kardex() {
 
   const handleProductSelect = (id: string) => {
     if (!id) {
-        setSelectedProduct(null);
-        return;
+      setSelectedProduct(null);
+      return;
     }
     const prod = productos.find(p => p.id.toString() === id);
     setSelectedProduct(prod);
@@ -71,7 +91,7 @@ function Kardex() {
 
   return (
     <div className="max-w-[1400px] mx-auto animate-in fade-in duration-700 pb-20">
-      
+
       {/* Header & Description */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10 pb-8 border-b border-slate-100">
         <div className="space-y-1">
@@ -81,38 +101,38 @@ function Kardex() {
           </h1>
           <p className="text-slate-500 text-lg italic ml-7 text-indigo-600/60">Trazabilidad absoluta y auditoría de movimientos de stock.</p>
         </div>
-        
+
         {selectedProduct && (
           <div className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-6 py-4 rounded-[24px] shadow-sm flex items-center gap-6 animate-in slide-in-from-right-8 duration-500">
-             <div className="text-center">
-                <p className="text-[9px] uppercase opacity-70 tracking-widest">Stock Crítico</p>
-                <p className="text-xl">{selectedProduct.cantidad}</p>
-             </div>
-             <div className="w-px h-8 bg-indigo-200"></div>
-             <div>
-                <p className="text-[9px] uppercase opacity-70 tracking-widest">Producto Seleccionado</p>
-                <p className="text-sm uppercase truncate max-w-[200px]">{selectedProduct.nombre}</p>
-             </div>
-             <button 
-               onClick={() => setSelectedProduct(null)}
-               className="bg-indigo-100 hover:bg-indigo-200 p-2 rounded-xl transition-all"
-             >
-               ✕
-             </button>
+            <div className="text-center">
+              <p className="text-[9px] uppercase opacity-70 tracking-widest">Stock Crítico</p>
+              <p className="text-xl">{selectedProduct.cantidad}</p>
+            </div>
+            <div className="w-px h-8 bg-indigo-200"></div>
+            <div>
+              <p className="text-[9px] uppercase opacity-70 tracking-widest">Producto Seleccionado</p>
+              <p className="text-sm uppercase truncate max-w-[200px]">{selectedProduct.nombre}</p>
+            </div>
+            <button
+              onClick={() => setSelectedProduct(null)}
+              className="bg-indigo-100 hover:bg-indigo-200 p-2 rounded-xl transition-all"
+            >
+              ✕
+            </button>
           </div>
         )}
       </div>
 
       {/* Advanced Filters Section */}
       <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-xl shadow-slate-100/50 mb-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end relative overflow-hidden">
-        
+
         <div className="space-y-1">
           <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Filtro Rápido (Nombre/SKU)</label>
           <div className="relative group">
             <span className="absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:scale-110 transition-transform">🔍</span>
-            <input 
-              type="text" 
-              placeholder="Buscar en resultados..." 
+            <input
+              type="text"
+              placeholder="Buscar en resultados..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs text-slate-700 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all"
@@ -122,8 +142,8 @@ function Kardex() {
 
         <div className="space-y-1">
           <label className="text-[10px] text-indigo-600 uppercase tracking-widest ml-1 bg-indigo-50 px-2 py-0.5 rounded-md w-fit mb-1">🔍 Auditoría por Producto Individual</label>
-          <select 
-            value={selectedProduct?.id || ""} 
+          <select
+            value={selectedProduct?.id || ""}
             onChange={e => handleProductSelect(e.target.value)}
             className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-700 focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none appearance-none transition-all cursor-pointer"
           >
@@ -137,7 +157,7 @@ function Kardex() {
         <div className="space-y-1">
           <div className="flex items-center justify-between ml-1">
             <label className="text-[10px] text-slate-400 uppercase tracking-widest">Intervalo Temporal</label>
-            <button 
+            <button
               onClick={() => {
                 const now = new Date();
                 const offset = now.getTimezoneOffset() * 60000;
@@ -159,8 +179,8 @@ function Kardex() {
         <div className="flex gap-4">
           <div className="flex-1 space-y-1">
             <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Cat. Movimiento</label>
-            <select 
-              value={tipo} 
+            <select
+              value={tipo}
               onChange={e => setTipo(e.target.value)}
               className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-xs text-slate-700 focus:bg-white outline-none appearance-none cursor-pointer"
             >
@@ -172,12 +192,12 @@ function Kardex() {
               <option value="ELIMINACIÓN">🗑️ ELIMINACIÓN</option>
             </select>
           </div>
-          <button 
-              onClick={() => fetchKardex()}
-              className="p-4 bg-slate-100 text-slate-600 rounded-2xl text-xs hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
-              title="Actualizar Datos"
+          <button
+            onClick={() => fetchKardex()}
+            className="p-4 bg-slate-100 text-slate-600 rounded-2xl text-xs hover:bg-slate-200 transition-all active:scale-95 shadow-sm"
+            title="Actualizar Datos"
           >
-              🔄
+            🔄
           </button>
         </div>
       </div>
@@ -205,12 +225,12 @@ function Kardex() {
                     <p className="mt-6 text-slate-400 uppercase text-[10px] tracking-[0.2em] animate-pulse">Analizando Registros del Servidor...</p>
                   </td>
                 </tr>
-              ) : filteredKardex.length === 0 ? (
+              ) : kardex.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-32 text-center text-slate-300 tracking-widest uppercase text-xs italic opacity-40">No se detectaron movimientos en el período.</td>
                 </tr>
               ) : (
-                filteredKardex.map((k, i) => (
+                kardex.map((k, i) => (
                   <tr key={i} className="group hover:bg-slate-50/50 transition-all duration-300">
                     <td className="py-3 px-8 whitespace-nowrap">
                       <div className="flex flex-col">
@@ -222,7 +242,7 @@ function Kardex() {
                       <div className="flex flex-col max-w-[200px]">
                         <span className="text-[12px] text-slate-800 uppercase leading-tight truncate">{k.producto_nombre}</span>
                         <div className="flex items-center gap-2 mt-1">
-                           <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-400 rounded border border-slate-200 uppercase tracking-tighter">{k.codigo_barras || 'N/A'}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-400 rounded border border-slate-200 uppercase tracking-tighter">{k.codigo_barras || 'N/A'}</span>
                         </div>
                       </div>
                     </td>
@@ -235,10 +255,9 @@ function Kardex() {
                       {k.cantidad_antes}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span className={`text-xl tracking-tighter ${
-                        k.tipo_movimiento === 'ENTRADA' || k.tipo_movimiento === 'SERVICIO' ? 'text-emerald-600' : 
-                        k.tipo_movimiento === 'SALIDA' ? 'text-rose-600' : 'text-amber-600'
-                      }`}>
+                      <span className={`text-xl tracking-tighter ${k.tipo_movimiento === 'ENTRADA' || k.tipo_movimiento === 'SERVICIO' ? 'text-emerald-600' :
+                          k.tipo_movimiento === 'SALIDA' ? 'text-rose-600' : 'text-amber-600'
+                        }`}>
                         {k.tipo_movimiento === 'SALIDA' ? '-' : '+'}{k.cantidad_modificada}
                       </span>
                     </td>
@@ -248,23 +267,68 @@ function Kardex() {
                       </div>
                     </td>
                     <td className="py-3 px-8">
-                       <div className="flex flex-col gap-1.5 min-w-[200px]">
-                          <span className="text-[11px] text-slate-700 italic leading-tight group-hover:text-indigo-600 transition-colors">"{k.motivo || 'Operación Manual'}"</span>
-                          <div className="flex flex-wrap gap-2 items-center">
-                            {k.referencia && (
-                              <span className="text-[9px] text-indigo-500 bg-indigo-50/50 px-2 py-0.5 rounded-lg">📄 REF: {k.referencia}</span>
-                            )}
-                            <span className="text-[9px] text-slate-400 uppercase flex items-center gap-1">
-                                <span className="w-1 h-1 bg-slate-300 rounded-full"></span> {k.usuario_nombre || 'SISTEMA'}
-                            </span>
-                          </div>
-                       </div>
+                      <div className="flex flex-col gap-1.5 min-w-[200px]">
+                        <span className="text-[11px] text-slate-700 italic leading-tight group-hover:text-indigo-600 transition-colors">"{k.motivo || 'Operación Manual'}"</span>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {k.referencia && (
+                            <span className="text-[9px] text-indigo-500 bg-indigo-50/50 px-2 py-0.5 rounded-lg">📄 REF: {k.referencia}</span>
+                          )}
+                          <span className="text-[9px] text-slate-400 uppercase flex items-center gap-1">
+                            <span className="w-1 h-1 bg-slate-300 rounded-full"></span> {k.usuario_nombre || 'SISTEMA'}
+                          </span>
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+           <div className="flex items-center gap-2">
+              <button 
+                disabled={page <= 1 || loading}
+                onClick={() => setPage(page - 1)}
+                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
+              >
+                Anterior
+              </button>
+              <button 
+                disabled={page >= totalPages || loading}
+                onClick={() => setPage(page + 1)}
+                className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
+              >
+                Siguiente
+              </button>
+           </div>
+           
+           <div className="hidden sm:flex gap-1">
+              {[...Array(totalPages)].map((_, i) => {
+                 const pNum = i + 1;
+                 // Mostrar solo algunas páginas si son muchas
+                 if (totalPages > 10 && Math.abs(pNum - page) > 2 && pNum !== 1 && pNum !== totalPages) {
+                    if (Math.abs(pNum - page) === 3) return <span key={pNum} className="px-2 self-center text-slate-300">...</span>;
+                    return null;
+                 }
+
+                 return (
+                   <button
+                     key={pNum}
+                     onClick={() => setPage(pNum)}
+                     className={`w-10 h-10 rounded-xl text-[10px] transition-all ${page === pNum ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-400 border border-slate-200 hover:bg-slate-50'}`}
+                   >
+                     {pNum}
+                   </button>
+                 );
+              })}
+           </div>
+
+           <div className="text-[10px] text-slate-400 uppercase tracking-widest">
+              Mostrando página {page} de {totalPages} ({totalRecords} movimientos)
+           </div>
         </div>
       </div>
     </div>

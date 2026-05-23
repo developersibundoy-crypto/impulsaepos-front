@@ -33,7 +33,7 @@ import { ControlCajaWrapper } from "./components/ControlCajaWrapper";
 import { CierreCajaModal, MovimientoCajaModal } from "./components/CajaModals";
 import PlanRestrictionModal from "./components/PlanRestrictionModal";
 import { usePlan } from "./hooks/usePlan";
-
+import API from "./api/api";
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem("adminToken");
@@ -79,6 +79,19 @@ const Navigation = () => {
 
   const [movType, setMovType] = React.useState<'Ingreso' | 'Salida' | null>(null);
   const { sesion } = useCaja();
+  const [empresaNombre, setEmpresaNombre] = React.useState("");
+
+  React.useEffect(() => {
+    if (!isLoginPage) {
+      API.get("/empresa")
+        .then(res => {
+          if (res.data && res.data.nombre_empresa) {
+            setEmpresaNombre(res.data.nombre_empresa);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [isLoginPage]);
 
   if (isLoginPage) return null;
 
@@ -162,8 +175,12 @@ const Navigation = () => {
 
             <div className="h-6 w-px bg-slate-200 mx-1"></div>
             
-
-
+            {empresaNombre && (
+              <div className="hidden xl:flex flex-col items-end justify-center mr-1 ml-2">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Operando como</span>
+                <span className="text-xs font-black text-indigo-600 leading-none uppercase tracking-tighter">{empresaNombre}</span>
+              </div>
+            )}
             
             <Link 
               to={ (hasAccess("recursos_humanos") || hasAccess("analitica")) ? "/admin" : "#" }

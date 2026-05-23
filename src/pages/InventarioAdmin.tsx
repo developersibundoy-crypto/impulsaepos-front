@@ -20,11 +20,29 @@ function InventarioAdmin() {
   const [categorias, setCategorias] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("");
 
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 450);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
   useEffect(() => {
     window.scrollTo(0, 0);
     fetchCategorias();
-    fetchProductos(1);
-  }, [tipo, selectedCategory]);
+  }, []);
+
+  // Reset page when search term or filters change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, tipo, selectedCategory]);
+
+  // Fetch products when page, search term, or filters change
+  useEffect(() => {
+    fetchProductos(page, debouncedSearch);
+  }, [page, debouncedSearch, tipo, selectedCategory]);
 
   const fetchCategorias = () => {
     API.get("/productos/categorias")
@@ -32,7 +50,7 @@ function InventarioAdmin() {
       .catch(console.error);
   };
 
-  const fetchProductos = (p: number = page, search: string = searchTerm) => {
+  const fetchProductos = (p: number = page, search: string = debouncedSearch) => {
     setLoading(true);
     API.get(`/productos?tipo=${tipo}&page=${p}&limit=50&search=${search}&categoria=${selectedCategory}`)
       .then(res => {
@@ -48,8 +66,6 @@ function InventarioAdmin() {
 
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
-    // Fetch immediately or we could debounce, but let's fetch for better experience
-    fetchProductos(1, val);
   };
 
   const handleDelete = (id: number) => {
@@ -291,14 +307,14 @@ function InventarioAdmin() {
            <div className="flex items-center gap-2">
               <button 
                 disabled={page <= 1 || loading}
-                onClick={() => fetchProductos(page - 1)}
+                onClick={() => setPage(page - 1)}
                 className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
                 Anterior
               </button>
               <button 
                 disabled={page >= totalPages || loading}
-                onClick={() => fetchProductos(page + 1)}
+                onClick={() => setPage(page + 1)}
                 className="px-6 py-3 rounded-2xl bg-white border border-slate-200 text-slate-600 text-[10px] uppercase tracking-widest shadow-sm hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-all"
               >
                 Siguiente
@@ -317,7 +333,7 @@ function InventarioAdmin() {
                  return (
                    <button
                      key={pNum}
-                     onClick={() => fetchProductos(pNum)}
+                     onClick={() => setPage(pNum)}
                      className={`w-10 h-10 rounded-xl text-[10px] transition-all ${page === pNum ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-white text-slate-400 border border-slate-200 hover:bg-slate-50'}`}
                    >
                      {pNum}
