@@ -3,31 +3,75 @@ import { useReactToPrint } from "react-to-print";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
 
+// Helper to calculate commercial days (30 days/month, 360 days/year)
+const getDiasComerciales = (inicio: string, fin: string): number => {
+  const start = new Date(inicio + "T00:00:00");
+  const end = new Date(fin + "T00:00:00");
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return 0;
+
+  let d1 = start.getDate();
+  let m1 = start.getMonth() + 1;
+  let y1 = start.getFullYear();
+
+  let d2 = end.getDate();
+  let m2 = end.getMonth() + 1;
+  let y2 = end.getFullYear();
+
+  // Regla de 30 días comerciales
+  if (d1 === 31) d1 = 30;
+  
+  const isLeap1 = (y1 % 4 === 0 && y1 % 100 !== 0) || y1 % 400 === 0;
+  const lastDayFeb1 = isLeap1 ? 29 : 28;
+  if (m1 === 2 && d1 === lastDayFeb1) d1 = 30;
+
+  if (d2 === 31) d2 = 30;
+
+  const isLeap2 = (y2 % 4 === 0 && y2 % 100 !== 0) || y2 % 400 === 0;
+  const lastDayFeb2 = isLeap2 ? 29 : 28;
+  if (m2 === 2 && d2 === lastDayFeb2) d2 = 30;
+
+  const days = (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1) + 1;
+  return days > 0 ? days : 0;
+};
+
 function PagosEmpleados() {
   const [ nomina, setNomina ] = useState<any[]>([]);
   const [ loading, setLoading ] = useState(false);
   const [ error, setError ] = useState<string | null>(null);
-  
   const currentDate = new Date();
-  const [ mes, setMes ] = useState(currentDate.getMonth() + 1);
-  const [ anio, setAnio ] = useState(currentDate.getFullYear());
+  const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
+  const lastDay = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).toISOString().split('T')[0];
+  
+  const [ fechaInicio, setFechaInicio ] = useState(firstDay);
+  const [ fechaFin, setFechaFin ] = useState(lastDay);
 
   const [ ticketData, setTicketData ] = useState<any>(null);
-
-  const meses = [
-    { value: 1, label: "Enero" }, { value: 2, label: "Febrero" },
-    { value: 3, label: "Marzo" }, { value: 4, label: "Abril" },
-    { value: 5, label: "Mayo" }, { value: 6, label: "Junio" },
-    { value: 7, label: "Julio" }, { value: 8, label: "Agosto" },
-    { value: 9, label: "Septiembre" }, { value: 10, label: "Octubre" },
-    { value: 11, label: "Noviembre" }, { value: 12, label: "Diciembre" }
-  ];
+  
+  // Per-employee date ranges and expanding logic
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [empDates, setEmpDates] = useState<{ [key: number]: { fechaInicio: string, fechaFin: string } }>({});
+  const [loadingEmp, setLoadingEmp] = useState<{ [key: number]: boolean }>({});
+  const [incluirComisiones, setIncluirComisiones] = useState<{ [key: number]: boolean }>({});
 
   const fetchNomina = async () => {
+    if (fechaInicio > fechaFin) {
+        setError("La fecha inicial no puede ser mayor que la final.");
+        return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const res = await API.get(`/pagos?mes=${mes}&anio=${anio}`);
+      const res = await API.get(`/pagos?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`);
+      
+      // Initialize empDates for new records if not already set
+      const newEmpDates = { ...empDates };
+      res.data.forEach((emp: any) => {
+          if (!newEmpDates[emp.cajero_id]) {
+              newEmpDates[emp.cajero_id] = { fechaInicio, fechaFin };
+          }
+      });
+      setEmpDates(newEmpDates);
       setNomina(res.data);
     } catch (err: any) {
       console.error("Payroll Fetch Error:", err);
@@ -40,7 +84,27 @@ function PagosEmpleados() {
 
   useEffect(() => {
     fetchNomina();
-  }, [mes, anio]);
+  }, [fechaInicio, fechaFin]);
+
+  const recalculateEmployee = async (cajero_id: number) => {
+      const dates = empDates[cajero_id] || { fechaInicio, fechaFin };
+      if (dates.fechaInicio > dates.fechaFin) {
+          alert("La fecha inicial no puede ser mayor que la final para este colaborador.");
+          return;
+      }
+      setLoadingEmp(prev => ({ ...prev, [cajero_id]: true }));
+      try {
+          const res = await API.get(`/pagos?fecha_inicio=${dates.fechaInicio}&fecha_fin=${dates.fechaFin}&cajero_id=${cajero_id}`);
+          if (res.data && res.data.length > 0) {
+              const updatedEmp = res.data[0];
+              setNomina(prev => prev.map(emp => emp.cajero_id === cajero_id ? updatedEmp : emp));
+          }
+      } catch (err: any) {
+          alert("Error al recalcular: " + (err.response?.data?.error || err.message));
+      } finally {
+          setLoadingEmp(prev => ({ ...prev, [cajero_id]: false }));
+      }
+  };
 
   const contentRef = useRef<HTMLDivElement>(null);
   const reactToPrintFn = useReactToPrint({ contentRef });
@@ -54,41 +118,72 @@ function PagosEmpleados() {
   }, [ticketData, reactToPrintFn]);
 
   const handlePagar = async (empleado: any) => {
-    if (!window.confirm(`¿Confirmar pago a ${empleado.nombre} por ${formatCOP(empleado.total_a_pagar)}?`)) return;
+    const dates = empDates[empleado.cajero_id] || { fechaInicio, fechaFin };
+    const diasLiquidados = getDiasComerciales(dates.fechaInicio, dates.fechaFin);
+    const valorDiario = empleado.salario_base / 30;
+    const salarioProporcional = valorDiario * diasLiquidados;
+
+    const isComisionesIncluidas = incluirComisiones[empleado.cajero_id] ?? true;
+    const comisionesAPagar = isComisionesIncluidas ? empleado.comisiones : 0;
+    const totalNeto = salarioProporcional + comisionesAPagar;
+
+    if (!window.confirm(`¿Confirmar pago a ${empleado.nombre} por ${formatCOP(totalNeto)}?`)) return;
 
     try {
       await API.post("/pagos", {
         cajero_id: empleado.cajero_id,
-        mes,
-        anio,
-        salario_base: empleado.salario_base,
-        comisiones: empleado.comisiones,
-        total_pagado: empleado.total_a_pagar,
+        fecha_inicio: dates.fechaInicio,
+        fecha_fin: dates.fechaFin,
+        salario_base: salarioProporcional,
+        comisiones: comisionesAPagar,
+        total_pagado: totalNeto,
         metodo_pago: "Efectivo"
       });
       
       setTicketData({
         ...empleado,
-        mesLabel: meses.find(m => m.value === parseInt(mes.toString()))?.label || "",
-        anio,
+        salario_base: salarioProporcional,
+        salario_mensual_base: empleado.salario_base,
+        dias_liquidados: diasLiquidados,
+        comisiones: comisionesAPagar,
+        total_a_pagar: totalNeto,
+        periodoLabel: `${dates.fechaInicio} al ${dates.fechaFin}`,
         fecha_pago: new Date().toISOString()
       });
 
-      fetchNomina();
+      // Refetch just this employee to update status
+      recalculateEmployee(empleado.cajero_id);
     } catch (err: any) {
       alert(err.response?.data?.error || "Error al registrar el pago.");
     }
   };
 
   const handleReimprimirSoporte = (empleado: any) => {
+     const dates = empDates[empleado.cajero_id] || { fechaInicio, fechaFin };
+     const diasLiquidados = getDiasComerciales(dates.fechaInicio, dates.fechaFin);
      setTicketData({
         ...empleado,
-        mesLabel: meses.find(m => m.value === parseInt(mes.toString()))?.label || "",
-        anio
+        salario_base: empleado.salario_pagado !== null ? empleado.salario_pagado : (empleado.salario_base / 30) * diasLiquidados,
+        dias_liquidados: diasLiquidados,
+        salario_mensual_base: empleado.salario_base,
+        periodoLabel: `${dates.fechaInicio} al ${dates.fechaFin}`
       });
   };
 
-  const totalNominaCalculada = nomina.reduce((acc, emp) => acc + emp.total_a_pagar, 0);
+  const totalNominaCalculada = nomina.reduce((acc, emp) => {
+      const dates = empDates[emp.cajero_id] || { fechaInicio, fechaFin };
+      const diasLiquidados = getDiasComerciales(dates.fechaInicio, dates.fechaFin);
+      
+      let salarioProporcional = emp.salario_pagado;
+      if (salarioProporcional === null || salarioProporcional === undefined) {
+          const valorDiario = emp.salario_base / 30;
+          salarioProporcional = valorDiario * diasLiquidados;
+      }
+
+      const isComisionesIncluidas = incluirComisiones[emp.cajero_id] ?? true;
+      const comisionesAPagar = isComisionesIncluidas ? emp.comisiones : 0;
+      return acc + (emp.estado === "Pagado" ? emp.total_a_pagar : salarioProporcional + comisionesAPagar);
+  }, 0);
 
   return (
     <div className="max-w-[1400px] mx-auto animate-in fade-in duration-700 pb-20">
@@ -116,14 +211,12 @@ function PagosEmpleados() {
                     
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Mes de Operación</label>
-                            <select value={mes} onChange={(e) => setMes(parseInt(e.target.value))} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all">
-                                {meses.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                            </select>
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Fecha Inicial Global</label>
+                            <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all" />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Año</label>
-                            <input type="number" value={anio} onChange={(e) => setAnio(parseInt(e.target.value))} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all" />
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">Fecha Final Global</label>
+                            <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all" />
                         </div>
                     </div>
 
@@ -170,33 +263,125 @@ function PagosEmpleados() {
                                 ) : nomina.length === 0 ? (
                                     <tr><td colSpan={5} className="py-24 text-center text-slate-300 font-medium italic opacity-50">No hay personal activo en este periodo.</td></tr>
                                 ) : (
-                                    nomina.map(emp => (
-                                        <tr key={emp.cajero_id} className="group hover:bg-slate-50 transition-colors">
-                                            <td className="px-8 py-6">
-                                                <div className="font-medium text-slate-900 uppercase leading-tight group-hover:text-indigo-600 transition-colors">{emp.nombre}</div>
-                                                <div className="text-[9px] font-medium text-slate-400 mt-1 uppercase tracking-tighter">ID: {emp.documento || "—"}</div>
-                                            </td>
-                                            <td className="px-8 py-6 text-right">
-                                                <div className="font-medium text-slate-600 text-sm tracking-tight">{formatCOP(emp.salario_base)}</div>
-                                            </td>
-                                            <td className="px-8 py-6 text-right">
-                                                <div className={`font-medium text-sm ${emp.comisiones > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
-                                                    +{formatCOP(emp.comisiones)}
-                                                </div>
-                                                {emp.porcentaje_comision > 0 && <div className="text-[8px] font-medium text-emerald-400 uppercase">Efec. {emp.porcentaje_comision}%</div>}
-                                            </td>
-                                            <td className="px-8 py-6 text-right">
-                                                <div className="font-medium text-slate-900 text-lg tracking-tighter">{formatCOP(emp.total_a_pagar)}</div>
-                                            </td>
-                                            <td className="px-8 py-6 text-center">
-                                                {emp.estado === "Pagado" ? (
-                                                    <button onClick={() => handleReimprimirSoporte(emp)} className="px-5 py-2 bg-slate-100 text-[10px] font-medium text-slate-500 rounded-xl hover:bg-slate-900 hover:text-white transition-all uppercase tracking-widest border border-slate-200">🖨️ Re-Imprimir</button>
-                                                ) : (
-                                                    <button onClick={() => handlePagar(emp)} className="px-8 py-3 bg-indigo-600 text-[10px] font-medium text-white rounded-2xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-1 transition-all uppercase tracking-widest">💰 Pagar Salario</button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))
+                                    nomina.map(emp => {
+                                        const dates = empDates[emp.cajero_id] || { fechaInicio, fechaFin };
+                                        const diasLiquidados = getDiasComerciales(dates.fechaInicio, dates.fechaFin);
+                                        const valorDiario = emp.salario_base / 30;
+                                        
+                                        let salarioProporcional = emp.salario_pagado;
+                                        if (salarioProporcional === null || salarioProporcional === undefined) {
+                                            salarioProporcional = valorDiario * diasLiquidados;
+                                        }
+
+                                        const isComisionesIncluidas = incluirComisiones[emp.cajero_id] ?? true;
+                                        const comisionesAPagar = isComisionesIncluidas ? emp.comisiones : 0;
+                                        const totalNeto = salarioProporcional + comisionesAPagar;
+
+                                        return (
+                                        <React.Fragment key={emp.cajero_id}>
+                                            <tr 
+                                                className={`group hover:bg-slate-50 transition-colors cursor-pointer ${expandedRow === emp.cajero_id ? 'bg-indigo-50/30' : ''}`}
+                                                onClick={() => setExpandedRow(expandedRow === emp.cajero_id ? null : emp.cajero_id)}
+                                            >
+                                                <td className="px-8 py-6">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`transition-transform duration-200 text-slate-400 ${expandedRow === emp.cajero_id ? 'rotate-90 text-indigo-500' : ''}`}>▶</span>
+                                                        <div>
+                                                            <div className="font-medium text-slate-900 uppercase leading-tight group-hover:text-indigo-600 transition-colors">{emp.nombre}</div>
+                                                            <div className="text-[9px] font-medium text-slate-400 mt-1 uppercase tracking-tighter">ID: {emp.documento || "—"}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-6 text-right">
+                                                    <div className="font-medium text-slate-600 text-sm tracking-tight">{formatCOP(salarioProporcional)}</div>
+                                                    <div className="text-[9px] font-medium text-slate-400 mt-1 uppercase tracking-tighter">
+                                                        {diasLiquidados} DÍAS A {formatCOP(valorDiario)}/DÍA
+                                                    </div>
+                                                    <div className="text-[8px] font-medium text-slate-400 uppercase tracking-tighter">
+                                                        BASE MENS: {formatCOP(emp.salario_base)}
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-6 text-right">
+                                                    <div className={`font-medium text-sm ${emp.comisiones > 0 ? 'text-emerald-600' : 'text-slate-300'} ${!isComisionesIncluidas && emp.comisiones > 0 ? 'opacity-50 line-through' : ''}`}>
+                                                        +{formatCOP(emp.comisiones)}
+                                                    </div>
+                                                    {emp.estado !== "Pagado" && emp.comisiones > 0 && (
+                                                        <label className="flex items-center justify-end gap-1 mt-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={isComisionesIncluidas} 
+                                                                onChange={(e) => setIncluirComisiones(prev => ({...prev, [emp.cajero_id]: e.target.checked}))}
+                                                                className="w-3 h-3 text-indigo-600 rounded"
+                                                            />
+                                                            <span className="text-[9px] font-medium text-slate-500 uppercase">Incluir</span>
+                                                        </label>
+                                                    )}
+                                                    {!isComisionesIncluidas && emp.comisiones > 0 && (
+                                                        <div className="text-[8px] font-bold text-amber-500 uppercase mt-1">Acumuladas para después</div>
+                                                    )}
+                                                    {emp.porcentaje_comision > 0 && <div className="text-[8px] font-medium text-emerald-400 uppercase mt-1">Efec. {emp.porcentaje_comision}%</div>}
+                                                </td>
+                                                <td className="px-8 py-6 text-right">
+                                                    <div className="font-medium text-slate-900 text-lg tracking-tighter">
+                                                        {loadingEmp[emp.cajero_id] ? "..." : formatCOP(emp.estado === "Pagado" ? emp.total_a_pagar : totalNeto)}
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-6 text-center" onClick={(e) => e.stopPropagation()}>
+                                                    {emp.estado === "Pagado" ? (
+                                                        <button onClick={() => handleReimprimirSoporte(emp)} className="px-5 py-2 bg-slate-100 text-[10px] font-medium text-slate-500 rounded-xl hover:bg-slate-900 hover:text-white transition-all uppercase tracking-widest border border-slate-200">🖨️ Re-Imprimir</button>
+                                                    ) : (
+                                                        <button onClick={() => handlePagar(emp)} disabled={loadingEmp[emp.cajero_id]} className="px-8 py-3 bg-indigo-600 text-[10px] font-medium text-white rounded-2xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-1 transition-all uppercase tracking-widest disabled:opacity-50">💰 Pagar Salario</button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                            {expandedRow === emp.cajero_id && (
+                                                <tr className="bg-indigo-50/10 border-b border-indigo-50 animate-in fade-in zoom-in-95 duration-200">
+                                                    <td colSpan={5} className="px-8 py-6">
+                                                        <div className="flex items-center gap-6 p-4 bg-white rounded-2xl border border-indigo-100 shadow-sm">
+                                                            <div className="space-y-1 flex-1">
+                                                                <label className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest ml-1">Periodo a liquidar para este colaborador</label>
+                                                                <div className="flex gap-4 items-center">
+                                                                    <div className="flex-1">
+                                                                        <label className="text-[9px] font-medium text-slate-400 uppercase ml-1 block mb-1">Fecha Inicial</label>
+                                                                        <input 
+                                                                            type="date" 
+                                                                            value={empDates[emp.cajero_id]?.fechaInicio || fechaInicio} 
+                                                                            onChange={(e) => setEmpDates(prev => ({ ...prev, [emp.cajero_id]: { ...prev[emp.cajero_id], fechaInicio: e.target.value } }))} 
+                                                                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs outline-none focus:bg-white focus:border-indigo-400 transition-all" 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <label className="text-[9px] font-medium text-slate-400 uppercase ml-1 block mb-1">Fecha Final</label>
+                                                                        <input 
+                                                                            type="date" 
+                                                                            value={empDates[emp.cajero_id]?.fechaFin || fechaFin} 
+                                                                            onChange={(e) => setEmpDates(prev => ({ ...prev, [emp.cajero_id]: { ...prev[emp.cajero_id], fechaFin: e.target.value } }))} 
+                                                                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-xs outline-none focus:bg-white focus:border-indigo-400 transition-all" 
+                                                                        />
+                                                                    </div>
+                                                                    <div className="pt-5">
+                                                                        <button 
+                                                                            onClick={() => recalculateEmployee(emp.cajero_id)}
+                                                                            disabled={loadingEmp[emp.cajero_id]}
+                                                                            className="px-6 py-2 bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-indigo-600 hover:text-white transition-all disabled:opacity-50"
+                                                                        >
+                                                                            {loadingEmp[emp.cajero_id] ? "Calculando..." : "Recalcular 🔄"}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            {emp.estado === "Pagado" && (
+                                                                <div className="text-[10px] font-medium text-amber-600 bg-amber-50 px-4 py-2 rounded-xl">
+                                                                    ⚠️ Ya tiene un pago registrado.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -212,7 +397,7 @@ function PagosEmpleados() {
               <div className="text-center space-y-2 mb-3">
                   <h2 className="text-lg font-medium uppercase">Soporte de Pago</h2>
                   <div className="py-2 border-y border-dashed border-black my-2 text-xs font-medium uppercase">
-                      Liquidación {ticketData.mesLabel} {ticketData.anio}
+                      Liquidación: {ticketData.periodoLabel}
                   </div>
                   <p className="text-[10px] uppercase font-medium opacity-70">Fecha: {new Date().toLocaleString()}</p>
               </div>
@@ -231,8 +416,13 @@ function PagosEmpleados() {
                   </thead>
                   <tbody>
                       <tr className="border-b border-dashed border-gray-300">
-                          <td className="py-2 font-medium">Salario Base (<span className="uppercase">Contractual</span>)</td>
-                          <td className="py-2 text-right font-medium">{formatCOP(ticketData.salario_base)}</td>
+                          <td className="py-2 font-medium">
+                              Salario Proporcional<br/>
+                              <span className="text-[8px] opacity-70 font-normal">
+                                  {ticketData.dias_liquidados} DÍAS (BASE: {formatCOP(ticketData.salario_mensual_base || 0)})
+                              </span>
+                          </td>
+                          <td className="py-2 text-right font-medium align-top">{formatCOP(ticketData.salario_base)}</td>
                       </tr>
                       <tr className="border-b border-dashed border-gray-300">
                           <td className="py-2 font-medium">Comisiones ({ticketData.porcentaje_comision}%)</td>

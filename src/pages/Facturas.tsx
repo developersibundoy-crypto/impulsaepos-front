@@ -10,6 +10,7 @@ function Facturas() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroRapido, setFiltroRapido] = useState("Todas");
+  const [filtroTipoFactura, setFiltroTipoFactura] = useState("Todas");
   const [empresa, setEmpresa] = useState<any>({});
   
   // Pagination
@@ -40,7 +41,7 @@ function Facturas() {
   }, [facturaPrintData, reactToPrintFn]);
 
   const handleImprimirVenta = (f: FacturaVenta) => {
-    API.get(`/ventas/${f.id}`)
+    API.get(`/ventas/${f.id}?tipo=${f.tipo_factura}`)
       .then(res => {
         setFacturaPrintData({ cabecera: f, detalles: res.data });
         setMenuOpenId(null);
@@ -51,11 +52,11 @@ function Facturas() {
   useEffect(() => {
     fetchFacturas(1);
     API.get("/empresa").then(res => setEmpresa(res.data)).catch(console.error);
-  }, [filtroRapido, searchTerm]);
+  }, [filtroRapido, filtroTipoFactura, searchTerm]);
 
   const fetchFacturas = (p: number = page) => {
     setLoading(true);
-    API.get(`/ventas?page=${p}&limit=${limit}&search=${searchTerm}&filtro=${filtroRapido}`)
+    API.get(`/ventas?page=${p}&limit=${limit}&search=${searchTerm}&filtro=${filtroRapido}&tipo_factura=${filtroTipoFactura}`)
       .then(res => {
         if (res.data && res.data.data) {
           setFacturas(res.data.data);
@@ -76,12 +77,15 @@ function Facturas() {
   };
 
   const procesarBorrado = (id: number) => {
-    const motivo = window.prompt(`⚠️ ¿Anular factura #${id}? Se devolverá el stock.\n\nEscriba el motivo de la anulación:`);
+    const f = facturas.find(fac => fac.id === id);
+    const tipo = f?.tipo_factura || 'POS';
+    const numDisplay = tipo === 'ELECTRONICA' ? `${f?.prefijo || 'FE'}-${f?.consecutivo}` : `#${id}`;
+    const motivo = window.prompt(`⚠️ ¿Anular factura ${numDisplay}? Se devolverá el stock.\n\nEscriba el motivo de la anulación:`);
     
     if (motivo === null) return; // Usuario canceló
     if (!motivo.trim()) return alert("Debe ingresar un motivo para anular la factura.");
 
-    API.delete(`/ventas/${id}`, { data: { motivo_anulacion: motivo } })
+    API.delete(`/ventas/${id}?tipo=${tipo}`, { data: { motivo_anulacion: motivo } })
       .then(res => {
         if (res.data.success) {
           fetchFacturas();
@@ -99,12 +103,13 @@ function Facturas() {
       setExpandedId(null);
     } else {
       setExpandedId(id);
-      API.get(`/ventas/${id}`)
+      const f = facturas.find(fac => fac.id === id);
+      const tipo = f?.tipo_factura || 'POS';
+      API.get(`/ventas/${id}?tipo=${tipo}`)
         .then(res => {
           setDetallesFactura(Array.isArray(res.data) ? res.data : []);
           setMenuOpenId(null);
           // Cargar teléfono del cliente
-          const f = facturas.find(fac => fac.id === id);
           setPhoneWS(f?.telefono?.replace(/\D/g, '') || "");
         })
         .catch(console.error);
@@ -187,21 +192,44 @@ function Facturas() {
         </div>
 
         {/* Filters & Stats */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
-                {["Todas", "Efectivo", "Transferencia"].map(f => (
-                    <button 
-                        key={f}
-                        onClick={() => setFiltroRapido(f)}
-                        className={`px-6 py-2 rounded-xl text-xs font-medium uppercase tracking-widest transition-all ${
-                            filtroRapido === f ? 'bg-white text-indigo-600 shadow-md shadow-indigo-100' : 'text-slate-500 hover:text-slate-800'
-                        }`}
-                    >
-                        {f === "Todas" ? "Todas" : f === "Efectivo" ? "Efectivo" : "Banco"}
-                    </button>
-                ))}
+        <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4">
+            <div className="flex flex-wrap items-center gap-4">
+                {/* Filtro de Pago */}
+                <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                    {["Todas", "Efectivo", "Transferencia"].map(f => (
+                        <button 
+                            key={f}
+                            onClick={() => setFiltroRapido(f)}
+                            className={`px-6 py-2 rounded-xl text-xs font-medium uppercase tracking-widest transition-all ${
+                                filtroRapido === f ? 'bg-white text-indigo-600 shadow-md shadow-indigo-100' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                        >
+                            {f === "Todas" ? "Todas" : f === "Efectivo" ? "Efectivo" : "Banco"}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Filtro de Tipo de Factura */}
+                <div className="flex p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                    {[
+                        { val: "Todas", label: "Todos los Tipos" },
+                        { val: "POS", label: "Solo POS" },
+                        { val: "ELECTRONICA", label: "Solo Electrónica" }
+                    ].map(f => (
+                        <button 
+                            key={f.val}
+                            onClick={() => setFiltroTipoFactura(f.val)}
+                            className={`px-4 py-2 rounded-xl text-xs font-medium uppercase tracking-widest transition-all ${
+                                filtroTipoFactura === f.val ? 'bg-white text-indigo-600 shadow-md shadow-indigo-100' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
             </div>
-            <div className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400 bg-white border border-slate-200 px-4 py-2 rounded-full">
+            
+            <div className="text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400 bg-white border border-slate-200 px-4 py-2 rounded-full text-center">
                 {totalRecords} Facturas Registradas
             </div>
         </div>
@@ -235,20 +263,29 @@ function Facturas() {
                                     } else {
                                         setExpandedId(f.id);
                                         // Auto load details when expanded
-                                        API.get(`/ventas/${f.id}`)
+                                        API.get(`/ventas/${f.id}?tipo=${f.tipo_factura}`)
                                           .then(res => setDetallesFactura(Array.isArray(res.data) ? res.data : []))
                                           .catch(console.error);
                                     }
                                 }}
                             >
-                                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center shrink-0">
-                                    <span className="text-indigo-600 font-semibold text-xs">#{f.id}</span>
+                                <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center shrink-0 p-1">
+                                    <span className="text-indigo-600 font-semibold text-[10px] text-center leading-tight">
+                                        {f.tipo_factura === 'ELECTRONICA' ? `${f.prefijo || 'FE'}-${f.consecutivo}` : `#${f.id}`}
+                                    </span>
                                 </div>
                                 
                                 <div className="flex-1 min-w-[200px]">
-                                    <h3 className="text-sm font-semibold text-slate-900 uppercase truncate">
-                                        {Number(f.cliente_id) === 1 ? "Cliente Mostrador" : (f.cliente || "Consumidor Final")}
-                                    </h3>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h3 className="text-sm font-semibold text-slate-900 uppercase truncate">
+                                            {Number(f.cliente_id) === 1 ? "Cliente Mostrador" : (f.cliente || "Consumidor Final")}
+                                        </h3>
+                                        {f.tipo_factura === 'ELECTRONICA' ? (
+                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700 uppercase tracking-wider">Electrónica</span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700 uppercase tracking-wider">POS</span>
+                                        )}
+                                    </div>
                                     <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">{formatDateTime(f.fecha)}</p>
                                 </div>
 
@@ -387,7 +424,11 @@ function Facturas() {
           <PrintReceipt
             ref={contentRef}
             empresa={empresa}
-            numero={facturaPrintData.cabecera.id}
+            numero={
+              facturaPrintData.cabecera.tipo_factura === 'ELECTRONICA'
+                ? `${facturaPrintData.cabecera.prefijo || 'FE'}-${String(facturaPrintData.cabecera.consecutivo || facturaPrintData.cabecera.id).padStart(6, '0')}`
+                : facturaPrintData.cabecera.id
+            }
             fecha={facturaPrintData.cabecera.fecha}
             cliente={Number(facturaPrintData.cabecera.cliente_id) === 1 ? "Fca. General / Mostrador" : (facturaPrintData.cabecera.cliente || "Consumidor Final")}
             cajero={facturaPrintData.cabecera.cajero || "Principal"}
@@ -396,6 +437,8 @@ function Facturas() {
             total={facturaPrintData.cabecera.total}
             pagoEfectivoMixto={facturaPrintData.cabecera.metodo_pago === 'Mixto' ? facturaPrintData.cabecera.pago_efectivo : undefined}
             pagoTransferenciaMixto={facturaPrintData.cabecera.metodo_pago === 'Mixto' ? facturaPrintData.cabecera.pago_transferencia : undefined}
+            tipoFactura={facturaPrintData.cabecera.tipo_factura === 'ELECTRONICA' ? 'ELECTRONICA' : 'POS'}
+            prefijo={facturaPrintData.cabecera.prefijo || undefined}
           />
         )}
       </div>

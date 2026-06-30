@@ -6,6 +6,7 @@ import { formatCOP } from "../utils/format";
 import { useReactToPrint } from "react-to-print";
 import PrintReceipt from "../components/PrintReceipt";
 import NotificationPanel from "../components/NotificationPanel";
+import { QuickCustomerModal } from "../components/QuickCustomerModal";
 
 function FacturacionElectronica() {
   const navigate = useNavigate();
@@ -44,6 +45,23 @@ function FacturacionElectronica() {
   useEffect(() => {
     localStorage.setItem("feTabs", JSON.stringify(tabs));
   }, [tabs]);
+
+  const nuevaTab = () => {
+    const newId = Math.max(...tabs.map((t: any) => t.id), 0) + 1;
+    setTabs([...tabs, { id: newId, carrito: [], clienteId: "", clienteSearch: "" }]);
+    setActiveTabId(newId);
+  };
+
+  const cerrarTab = (id: number) => {
+    if (tabs.length === 1) return;
+    if (window.confirm("¿Seguro que deseas cerrar esta venta? Se perderán los productos agregados.")) {
+      const newTabs = tabs.filter((t: any) => t.id !== id);
+      setTabs(newTabs);
+      if (activeTabId === id) {
+        setActiveTabId(newTabs[0].id);
+      }
+    }
+  };
 
   // Payment States
   const [metodoPago, setMetodoPago] = useState("Transferencia");
@@ -326,14 +344,23 @@ function FacturacionElectronica() {
 
   const resetVenta = () => {
     setVentaExitosa(false);
-    setClienteId("");
-    setClienteSearch("");
     setPagoCliente("");
     setPagoEfectivoMixto("");
     setPagoTransferenciaMixto("");
     setFeExitoData(null);
     setItemsParaRecibo([]);
     setTotalesRecibo(null);
+
+    if (tabs.length > 1) {
+      const newTabs = tabs.filter((t: any) => t.id !== activeTabId);
+      setTabs(newTabs);
+      setActiveTabId(newTabs[0]?.id || 1);
+    } else {
+      setCarrito([]);
+      setClienteId("");
+      setClienteSearch("");
+    }
+
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
@@ -468,16 +495,26 @@ function FacturacionElectronica() {
                 <button
                   key={p.id}
                   onClick={() => agregarAlCarrito(p)}
-                  className="group flex flex-col p-5 bg-white border border-blue-100 rounded-[32px] text-left transition-all duration-300 hover:bg-blue-50/50 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-100/50 active:scale-95 relative overflow-hidden"
+                  className="group flex flex-col p-5 bg-white border border-blue-100 rounded-[32px] text-left transition-all duration-300 hover:bg-blue-50/50 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-100/50 active:scale-95 relative"
                 >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700"></div>
+                  <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700"></div>
+                  </div>
 
-                  <h3 className="text-xs font-bold text-slate-700 uppercase line-clamp-2 min-h-[2.5rem] tracking-tight group-hover:text-blue-700 transition-colors relative z-10">{p.nombre}</h3>
+                  <div className="relative group/tooltip w-full z-20">
+                    <h3 className="text-xs font-normal text-slate-700 uppercase line-clamp-2 min-h-[2.5rem] tracking-tight group-hover:text-blue-700 transition-colors cursor-help">
+                      {p.nombre}
+                    </h3>
+                    <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[220px] bg-slate-800 text-white text-[10px] p-2.5 rounded-xl shadow-2xl pointer-events-none z-[999]">
+                      <span className="block whitespace-normal break-words leading-snug">{p.nombre}</span>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-[6px] border-transparent border-t-slate-800"></div>
+                    </div>
+                  </div>
                   <div className="mt-auto space-y-3 pt-4 relative z-10">
-                    <span className="text-2xl font-black text-blue-600 italic tracking-tighter block drop-shadow-sm">{formatCOP(p.precio_venta)}</span>
+                    <span className="text-2xl font-normal text-blue-600 italic tracking-tighter block drop-shadow-sm">{formatCOP(p.precio_venta)}</span>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[8px] font-black text-blue-700 uppercase tracking-widest block bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 shadow-sm">REF: {p.referencia || 'S/R'}</span>
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 shadow-sm">📦 {p.cantidad}</span>
+                      <span className="text-[8px] font-normal text-blue-700 uppercase tracking-widest block bg-blue-50 px-2 py-1 rounded-lg border border-blue-100 shadow-sm">REF: {p.referencia || 'S/R'}</span>
+                      <span className="text-[8px] font-normal text-slate-400 uppercase tracking-widest block bg-slate-50 px-2 py-1 rounded-lg border border-slate-100 shadow-sm">📦 {p.cantidad}</span>
                     </div>
                   </div>
                 </button>
@@ -500,37 +537,86 @@ function FacturacionElectronica() {
 
       {/* Cart side */}
       <div className="w-full lg:w-[450px] flex flex-col bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden relative">
-        <div className="p-8 border-b border-slate-100 flex flex-col gap-6 bg-slate-50/30">
-          <div className="space-y-1">
-            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-[0.2em] ml-1">Titular de la Factura</label>
-            <div className="relative">
-              <input
-                list="fe-clientes-list"
-                type="text"
-                placeholder="Documento o Nombre del Cliente..."
-                value={clienteSearch}
-                onChange={e => {
-                  const val = e.target.value;
-                  setClienteSearch(val);
-                  const match = clientes.find(c => c.documento === val || `${c.nombre} (${c.documento})` === val);
-                  if (match) { setClienteId(match.id.toString()); setClienteSearch(`${match.nombre} (${match.documento})`); }
-                }}
-                className="w-full pl-6 pr-14 py-5 bg-slate-50 border border-slate-200 rounded-3xl text-xs font-medium uppercase outline-none focus:bg-white focus:ring-4 focus:ring-amber-500/5 transition-all"
-              />
+        
+        {/* Vistas Simultáneas / Tabs */}
+        <div className="p-5 bg-slate-100 border-b border-slate-200">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[12px] font-medium text-slate-500 uppercase tracking-[0.2em] italic">Facturas en Curso</h3>
+            <button onClick={nuevaTab} className="bg-white px-4 py-2 rounded-full border border-slate-200 text-[11px] font-semibold text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm flex items-center gap-2">
+              <span className="text-lg leading-none">+</span> Nueva Venta
+            </button>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-300">
+            {tabs.map((tab: any, idx: number) => (
               <button
-                type="button"
-                onClick={() => setShowQuickCustomerModal(true)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all z-10"
-                title="Registrar nuevo cliente"
+                key={tab.id}
+                onClick={() => setActiveTabId(tab.id)}
+                className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border-2 whitespace-nowrap ${
+                  activeTabId === tab.id
+                    ? "bg-blue-600 text-white border-blue-600 shadow-md scale-105 z-10"
+                    : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"
+                }`}
               >
-                ＋
+                Venta {idx + 1}
+                <span className={`w-2 h-2 rounded-full ${tab.carrito?.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`}></span>
+                {tabs.length > 1 && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      cerrarTab(tab.id);
+                    }}
+                    className="ml-2 hover:text-rose-300 transition-colors text-base font-light px-1"
+                  >
+                    ×
+                  </span>
+                )}
               </button>
-              <datalist id="fe-clientes-list">
-                {clientes.map(c => (
-                  <option key={c.id} value={c.documento}>{c.nombre}</option>
-                ))}
-              </datalist>
-              <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400">👤</span>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-4 border-b border-slate-100 bg-slate-50/30">
+          <div className="grid grid-cols-2 gap-3">
+            {/* Titular Factura */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-medium text-slate-400 uppercase tracking-[0.2em] ml-1">Titular de Factura</label>
+              <div className="relative">
+                <input
+                  list="fe-clientes-list"
+                  type="text"
+                  placeholder="Cliente..."
+                  value={clienteSearch}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setClienteSearch(val);
+                    const match = clientes.find(c => c.documento === val || `${c.nombre} (${c.documento})` === val);
+                    if (match) { setClienteId(match.id.toString()); setClienteSearch(`${match.nombre} (${match.documento})`); }
+                  }}
+                  className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium uppercase outline-none focus:bg-white focus:ring-2 focus:ring-amber-500/10 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowQuickCustomerModal(true)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 bg-blue-600 text-white rounded-lg shadow-sm flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-all z-10"
+                  title="Registrar nuevo cliente"
+                >
+                  ＋
+                </button>
+                <datalist id="fe-clientes-list">
+                  {clientes.map(c => (
+                    <option key={c.id} value={c.documento}>{c.nombre}</option>
+                  ))}
+                </datalist>
+              </div>
+            </div>
+
+            {/* Vendedor Asignado */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-medium text-slate-400 uppercase tracking-[0.2em] ml-1">Vendedor (Auto)</label>
+              <div className="text-[10px] font-bold text-slate-600 uppercase bg-white px-3 py-2 rounded-xl border border-slate-200 flex items-center gap-2 shadow-sm truncate h-[34px]">
+                <span className="text-blue-500 text-sm">💼</span>
+                <span className="truncate">{cajeros.find(c => c.id.toString() === cajeroId.toString())?.nombre || "Cajero Principal"}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -555,21 +641,26 @@ function FacturacionElectronica() {
                     removerDelCarrito(item);
                   }
                 }}
-                className="flex items-center gap-4 p-4 bg-white rounded-3xl border border-blue-50 outline-none focus:ring-4 focus:ring-blue-500/5 transition-all shadow-sm"
+                className="flex items-center gap-2 p-2 bg-white rounded-xl border border-blue-50 outline-none focus:ring-4 focus:ring-blue-500/5 transition-all shadow-sm"
               >
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-[11px] font-bold text-slate-800 uppercase truncate leading-tight">{item.nombre}</h4>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[9px] font-bold text-blue-600 uppercase tracking-widest italic">{formatCOP(item.precio_venta)} c/u</span>
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="relative group/tooltip inline-block max-w-full">
+                    <h4 className="text-[10px] font-bold text-slate-800 uppercase truncate leading-tight cursor-help">{item.nombre}</h4>
+                    <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-0 mb-2 w-max max-w-[200px] bg-slate-800 text-white text-[10px] p-2.5 rounded-xl shadow-2xl pointer-events-none z-[999]">
+                      <span className="block whitespace-normal break-words leading-snug">{item.nombre}</span>
+                      <div className="absolute top-full left-4 -mt-1 border-[6px] border-transparent border-t-slate-800"></div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
                     {parseFloat(item.iva_porcentaje) > 0 && (
                       <span className="text-[7px] font-black bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100 uppercase tracking-tighter">+ {item.iva_porcentaje}% IVA</span>
                     )}
                   </div>
                 </div>
 
-                {/* Quantity Controls - Style aligned with POS */}
-                <div className="flex items-center bg-blue-50/50 rounded-2xl p-1 border border-blue-100 shadow-inner shrink-0">
-                  <button onClick={() => removerDelCarrito(item)} className="w-10 h-10 flex items-center justify-center text-lg text-slate-400 bg-white hover:text-rose-600 rounded-xl transition-all shadow-sm active:scale-90 select-none font-bold">－</button>
+                {/* Quantity Controls */}
+                <div className="flex items-center bg-blue-50/50 rounded-lg p-0.5 border border-blue-100 shadow-inner shrink-0">
+                  <button onClick={() => removerDelCarrito(item)} className="w-6 h-6 flex items-center justify-center text-sm text-slate-400 bg-white hover:text-rose-600 rounded-md transition-all shadow-sm active:scale-90 select-none font-bold">－</button>
                   <input
                     type="number"
                     value={item.qty === 0 ? "" : item.qty}
@@ -583,10 +674,24 @@ function FacturacionElectronica() {
                         removerDelCarrito(item);
                       }
                     }}
-                    className="w-10 text-center text-sm bg-transparent outline-none text-blue-900 font-black"
+                    className="w-6 text-center text-[10px] bg-transparent outline-none text-blue-900 font-black p-0 m-0"
                   />
-                  <button onClick={() => agregarAlCarrito(item)} className="w-10 h-10 flex items-center justify-center text-lg text-slate-400 bg-white hover:text-blue-600 rounded-xl transition-all shadow-sm active:scale-90 select-none font-bold">＋</button>
+                  <button onClick={() => agregarAlCarrito(item)} className="w-6 h-6 flex items-center justify-center text-sm text-slate-400 bg-white hover:text-blue-600 rounded-md transition-all shadow-sm active:scale-90 select-none font-bold">＋</button>
                 </div>
+                
+                {/* Total Value */}
+                <div className="shrink-0 text-right min-w-[65px] ml-1">
+                  <span className="text-[11px] font-black text-blue-700 block italic">{formatCOP(item.precio_venta * item.qty)}</span>
+                </div>
+
+                {/* Remove completely button */}
+                <button
+                  onClick={() => eliminarDelCarrito(item)}
+                  className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-md transition-all active:scale-90 shrink-0"
+                  title="Eliminar producto"
+                >
+                  <span className="text-lg leading-none">×</span>
+                </button>
               </div>
             ))
           )}
@@ -770,175 +875,21 @@ function FacturacionElectronica() {
             vuelto={totalesRecibo?.vuelto}
             pagoEfectivoMixto={totalesRecibo?.pagoEfectivoMixto}
             pagoTransferenciaMixto={totalesRecibo?.pagoTransferenciaMixto}
+            tipoFactura="ELECTRONICA"
           />
         )}
       </div>
 
       {/* Quick Customer Registration Modal */}
-      {showQuickCustomerModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowQuickCustomerModal(false)}></div>
-          <div className="relative w-full max-w-md bg-white rounded-[40px] shadow-3xl p-10 animate-in zoom-in duration-300 border border-slate-100">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl text-slate-900 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-500 font-semibold">Registro Rápido</h2>
-              <button onClick={() => setShowQuickCustomerModal(false)} className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center hover:text-rose-500 transition-all font-semibold">×</button>
-            </div>
-
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              if (!newCustomer.nombre) return alert("El nombre es obligatorio");
-              setIsCreatingCustomer(true);
-              try {
-                const res = await API.post("/clientes", newCustomer);
-                const created = res.data;
-                // Add to local list
-                setClientes((prev: any[]) => [...prev, created]);
-                // Select it
-                setClienteId(created.id.toString());
-                setClienteSearch(`${created.nombre} (${created.documento || 'S/D'})`);
-                setShowQuickCustomerModal(false);
-                setNewCustomer({ nombre: "", documento: "", tipo_documento: "13", dv: "", telefono: "", correo: "" });
-              } catch (err: any) {
-                alert("Error creando cliente: " + (err.response?.data?.error || err.message));
-              } finally {
-                setIsCreatingCustomer(false);
-              }
-            }} className="space-y-4">
-
-              <div className="grid grid-cols-1 gap-4">
-                <div className="flex gap-2">
-                  <div className="space-y-1.5 flex-1">
-                    <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">NIT / Cédula</label>
-                    <input
-                      type="text"
-                      value={newCustomer.documento}
-                      onChange={e => {
-                        const val = e.target.value.replace(/\D/g, '');
-                        setNewCustomer({
-                          ...newCustomer,
-                          documento: val,
-                          dv: newCustomer.tipo_documento === "31" ? calcularDV(val) : ""
-                        });
-                      }}
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                      placeholder="Nro Identificación"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!newCustomer.documento) return alert("Ingrese el NIT");
-                      setIsCreatingCustomer(true);
-                      try {
-                        // Intento de consulta a API pública (V-Pro o similar)
-                        const resp = await fetch(`https://api.v-pro.org/nit/${newCustomer.documento}`);
-                        if (resp.ok) {
-                          const data = await resp.json();
-                          if (data && data.razon_social) {
-                            setNewCustomer(prev => ({
-                              ...prev,
-                              nombre: data.razon_social.toUpperCase(),
-                              dv: data.dv?.toString() || calcularDV(prev.documento),
-                              tipo_documento: "31"
-                            }));
-                          } else {
-                            setNewCustomer(prev => ({ ...prev, dv: calcularDV(prev.documento) }));
-                          }
-                        } else {
-                          setNewCustomer(prev => ({ ...prev, dv: calcularDV(prev.documento) }));
-                        }
-                      } catch {
-                        setNewCustomer(prev => ({ ...prev, dv: calcularDV(prev.documento) }));
-                      } finally {
-                        setIsCreatingCustomer(false);
-                      }
-                    }}
-                    className="mt-6 px-4 bg-slate-100 text-slate-600 rounded-2xl font-semibold text-[10px] uppercase hover:bg-indigo-600 hover:text-white transition-all border border-slate-200"
-                  >
-                    Consultar ✨
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">Nombre Completo / Razón Social</label>
-                <input
-                  type="text"
-                  value={newCustomer.nombre}
-                  onChange={e => setNewCustomer({ ...newCustomer, nombre: e.target.value.toUpperCase() })}
-                  className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                  placeholder="Se llena automáticamente al consultar"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">Tipo Identificación</label>
-                  <select
-                    value={newCustomer.tipo_documento}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setNewCustomer({
-                        ...newCustomer,
-                        tipo_documento: val,
-                        dv: val === "31" ? calcularDV(newCustomer.documento) : ""
-                      });
-                    }}
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-xs"
-                  >
-                    <option value="13">Cédula de Ciudadanía</option>
-                    <option value="31">NIT (Número Id. Tributaria)</option>
-                    <option value="11">Registro Civil</option>
-                    <option value="12">Tarjeta de Identidad</option>
-                    <option value="22">Cédula de Extranjería</option>
-                    <option value="41">Pasaporte</option>
-                    <option value="50">NIT de otro país</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">DV</label>
-                  <input
-                    type="text"
-                    value={newCustomer.dv}
-                    readOnly
-                    className="w-full px-5 py-3.5 bg-slate-100 border border-slate-200 rounded-2xl text-center font-medium text-indigo-700 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">WhatsApp</label>
-                  <input
-                    type="text"
-                    value={newCustomer.telefono}
-                    onChange={e => setNewCustomer({ ...newCustomer, telefono: e.target.value })}
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">Email</label>
-                  <input
-                    type="email"
-                    value={newCustomer.correo}
-                    onChange={e => setNewCustomer({ ...newCustomer, correo: e.target.value })}
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-xs"
-                    placeholder="factura@email.com"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={isCreatingCustomer}
-                className="w-full py-5 bg-indigo-600 text-white rounded-3xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-1 transition-all uppercase tracking-widest text-[10px] font-medium mt-4"
-              >
-                {isCreatingCustomer ? "⏳ Procesando..." : "✅ Registrar y Seleccionar"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <QuickCustomerModal
+        isOpen={showQuickCustomerModal}
+        onClose={() => setShowQuickCustomerModal(false)}
+        onCustomerCreated={(c) => {
+          setClientes((prev: any[]) => [...prev, c]);
+          setClienteId(c.id.toString());
+          setClienteSearch(`${c.nombre || c.razon_social} ${c.documento ? `(${c.documento})` : ''}`);
+        }}
+      />
 
     </div>
   );

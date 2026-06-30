@@ -11,6 +11,7 @@ export interface Producto {
   permitir_venta_negativa?: boolean;
   iva_porcentaje?: string | number;
   fecha_vencimiento?: string;
+  descripcion?: string;
 }
 
 export interface Cajero {
@@ -50,6 +51,9 @@ export interface FacturaVenta {
   cliente_id?: number;
   telefono?: string;
   estado?: string;
+  tipo_factura?: string;
+  prefijo?: string;
+  consecutivo?: number;
 }
 
 export interface Borrador {

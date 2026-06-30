@@ -10,6 +10,8 @@ import { hasAccess } from "../utils/auth";
 import IngresoProductos from "./IngresoProductos";
 import Separados from "./Separados";
 import NotificationPanel from "../components/NotificationPanel";
+import { QuickCustomerModal } from "../components/QuickCustomerModal";
+import { RuletaDescuentos } from "../components/RuletaDescuentos";
 
 // CartItem extiende Producto pero fuerza id a ser requerido (los productos del carrito SIEMPRE tienen ID del backend)
 interface CartItem extends Omit<Producto, 'id'> {
@@ -133,6 +135,7 @@ function Productos() {
   const [isProcessingSeparado, setIsProcessingSeparado] = useState(false);
   const [showIngresoModal, setShowIngresoModal] = useState(false);
   const [showSeparadosHistoryModal, setShowSeparadosHistoryModal] = useState(false);
+  const [showRuleta, setShowRuleta] = useState(false);
 
 
   // Scanner Optimization Refs
@@ -791,6 +794,23 @@ function Productos() {
                 >
                   <span className="text-lg">📥</span> INGRESO
                 </button>
+
+                <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                <button
+                  onClick={() => navigate('/cotizaciones')}
+                  className="h-10 px-4 bg-amber-500 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-amber-600 transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-amber-100"
+                  title="Crear Nueva Cotización"
+                >
+                  <span className="text-lg">📝</span> COTIZACIONES
+                </button>
+                <div className="w-px h-6 bg-slate-100 mx-1"></div>
+                <button
+                  onClick={() => setShowRuleta(true)}
+                  className="h-10 px-4 bg-purple-600 text-white rounded-xl flex items-center justify-center gap-2 hover:bg-purple-700 transition-all font-medium text-[10px] uppercase tracking-widest shadow-lg shadow-purple-100"
+                  title="Ruleta de Descuentos"
+                >
+                  <span className="text-lg">🎡</span> RULETA
+                </button>
               </div>
               <h2 className="text-xl lg:text-3xl text-slate-800 tracking-tight flex items-center gap-3 font-medium uppercase italic ml-2">
                 <span className="text-indigo-600">⚡</span> Terminal POS
@@ -844,10 +864,25 @@ function Productos() {
                     className={`group relative flex flex-col p-4 bg-white rounded-2xl border border-slate-200 text-left transition-all duration-300 hover:shadow-xl hover:shadow-indigo-100 hover:border-indigo-300 active:scale-95 disabled:opacity-50 ${isOutOfStock ? 'bg-slate-50 border-slate-100' : ''}`}
                   >
                     <div className="mb-3">
-                      <div className="flex justify-between items-start gap-1">
-                        <h3 className="text-[12px] text-slate-900 line-clamp-2 leading-tight min-h-[2.4rem] uppercase font-medium">{p.nombre}</h3>
+                      <div className="relative group/tooltip w-full z-20">
+                        <div className="flex justify-between items-start gap-1">
+                          <h3 className="text-[12px] text-slate-900 line-clamp-2 leading-tight min-h-[2.4rem] uppercase font-medium cursor-help">{p.nombre}</h3>
+                        </div>
+                        <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[220px] bg-slate-800 text-white text-[10px] p-2.5 rounded-xl shadow-2xl pointer-events-none z-[999]">
+                          <span className="block whitespace-normal break-words leading-snug">{p.nombre}</span>
+                          {p.descripcion && <span className="block whitespace-normal break-words leading-snug mt-1 font-normal text-slate-300">{p.descripcion}</span>}
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-[6px] border-transparent border-t-slate-800"></div>
+                        </div>
                       </div>
-                      <p className="text-[10px] text-slate-900 font-bold mt-2 uppercase tracking-tighter">{p.referencia || 'SIN REFERENCIA'}</p>
+                      <div className="relative group/tooltip w-fit max-w-full z-20">
+                        <p className="text-[10px] text-slate-900 font-bold mt-2 uppercase tracking-tighter truncate cursor-help">{p.referencia || 'SIN REFERENCIA'}</p>
+                        {p.referencia && (
+                          <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-0 mb-1 w-max max-w-[200px] bg-slate-800 text-white text-[10px] p-2 rounded-lg shadow-xl pointer-events-none z-[999]">
+                            <span className="block whitespace-normal break-words leading-snug">{p.referencia}</span>
+                            <div className="absolute top-full left-4 -mt-1 border-[5px] border-transparent border-t-slate-800"></div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-auto space-y-2">
                       <div className="text-lg text-indigo-600 font-medium leading-none">{formatCOP(p.precio_venta)}</div>
@@ -1022,9 +1057,23 @@ function Productos() {
                   className="group relative flex items-center py-1.5 px-3 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 transition-all duration-300 animate-in slide-in-from-right-4 ring-1 ring-slate-50 gap-3 outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
                   {/* Name & ID - Left side */}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-[14px] font-medium text-slate-900 uppercase truncate leading-tight">{item.nombre}</h4>
-                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter mt-1">REF: {item.referencia || 'NO REF'}</p>
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="relative group/tooltip inline-block max-w-full">
+                      <h4 className="text-[14px] font-medium text-slate-900 uppercase truncate leading-tight cursor-help">{item.nombre}</h4>
+                      <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-0 mb-2 w-max max-w-[200px] bg-slate-800 text-white text-[10px] p-2.5 rounded-xl shadow-2xl pointer-events-none z-[999]">
+                        <span className="block whitespace-normal break-words leading-snug">{item.nombre}</span>
+                        <div className="absolute top-full left-4 -mt-1 border-[6px] border-transparent border-t-slate-800"></div>
+                      </div>
+                    </div>
+                    <div className="relative group/tooltip inline-block max-w-full block mt-1">
+                      <p className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter cursor-help truncate">REF: {item.referencia || 'NO REF'}</p>
+                      {item.referencia && (
+                        <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-0 mb-1 w-max max-w-[200px] bg-slate-800 text-white text-[10px] p-2 rounded-lg shadow-xl pointer-events-none z-[999]">
+                          <span className="block whitespace-normal break-words leading-snug">{item.referencia}</span>
+                          <div className="absolute top-full left-2 -mt-1 border-[5px] border-transparent border-t-slate-800"></div>
+                        </div>
+                      )}
+                    </div>
                     {/* Alerta de Stock Real-Time */}
                     {!item.es_servicio && (!empresa.permitir_venta_negativa || !item.permitir_venta_negativa) && (item.qty > (item.cantidad - (getCommittedQty(item.id) - item.qty))) && (
                       <div className="text-[8px] font-medium text-rose-600 bg-rose-50 px-1.5 py-1 rounded-lg inline-block mt-2 animate-pulse border border-rose-100 uppercase tracking-tighter shadow-sm">
@@ -1424,129 +1473,15 @@ function Productos() {
         )}
       </div>
       {/* Quick Customer Registration Modal */}
-      {showQuickCustomerModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowQuickCustomerModal(false)}></div>
-          <div className="relative w-full max-w-md bg-white rounded-[40px] shadow-3xl p-10 animate-in zoom-in duration-300 border border-slate-100">
-            <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl text-slate-900 bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-500 font-semibold">Registro Rápido</h2>
-              <button onClick={() => setShowQuickCustomerModal(false)} className="w-10 h-10 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center hover:text-rose-500 transition-all font-semibold">×</button>
-            </div>
-
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              if (!newCustomer.nombre) return alert("El nombre es obligatorio");
-              setIsCreatingCustomer(true);
-              try {
-                const res = await API.post("/clientes", newCustomer);
-                const created = res.data;
-                setClientes(prev => [...prev, created]);
-                setClienteId(created.id.toString());
-                setClienteSearch(`${created.nombre} (${created.documento || 'S/D'})`);
-                setShowQuickCustomerModal(false);
-                setNewCustomer({ nombre: "", documento: "", tipo_documento: "13", dv: "", telefono: "", correo: "" });
-              } catch (err: any) {
-                alert("Error creando cliente: " + (err.response?.data?.error || err.message));
-              } finally {
-                setIsCreatingCustomer(false);
-              }
-            }} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">Nombre Completo / Razón Social</label>
-                <input
-                  type="text"
-                  value={newCustomer.nombre}
-                  onChange={e => setNewCustomer({ ...newCustomer, nombre: e.target.value.toUpperCase() })}
-                  className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                  placeholder="Ej: JUAN PEREZ o EMPRESA SAS"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">Tipo Identificación</label>
-                  <select
-                    value={newCustomer.tipo_documento}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setNewCustomer({
-                        ...newCustomer,
-                        tipo_documento: val,
-                        dv: val === "31" ? calcularDV(newCustomer.documento) : ""
-                      });
-                    }}
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-xs"
-                  >
-                    <option value="13">Cédula de Ciudadanía</option>
-                    <option value="31">NIT (Número Id. Tributaria)</option>
-                    <option value="11">Registro Civil</option>
-                    <option value="12">Tarjeta de Identidad</option>
-                    <option value="22">Cédula de Extranjería</option>
-                    <option value="41">Pasaporte</option>
-                    <option value="50">NIT de otro país</option>
-                  </select>
-                </div>
-                <div className="flex gap-2">
-                  <div className="space-y-1.5 flex-1">
-                    <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">Nro Documento</label>
-                    <input
-                      type="text"
-                      value={newCustomer.documento}
-                      onChange={e => {
-                        const val = e.target.value.replace(/\D/g, '');
-                        setNewCustomer({
-                          ...newCustomer,
-                          documento: val,
-                          dv: newCustomer.tipo_documento === "31" ? calcularDV(val) : ""
-                        });
-                      }}
-                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                      placeholder="Sin puntos"
-                    />
-                  </div>
-                  {newCustomer.tipo_documento === "31" && (
-                    <div className="space-y-1.5 w-12 shrink-0">
-                      <label className="text-[10px] text-indigo-500 font-medium uppercase tracking-widest text-center block">DV</label>
-                      <div className="w-full px-1 py-3.5 bg-indigo-50 border border-indigo-200 rounded-2xl text-center font-medium text-indigo-700">{newCustomer.dv}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">WhatsApp</label>
-                  <input
-                    type="text"
-                    value={newCustomer.telefono}
-                    onChange={e => setNewCustomer({ ...newCustomer, telefono: e.target.value })}
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-slate-400 font-medium uppercase tracking-widest ml-1">Email</label>
-                  <input
-                    type="email"
-                    value={newCustomer.correo}
-                    onChange={e => setNewCustomer({ ...newCustomer, correo: e.target.value })}
-                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-xs"
-                    placeholder="factura@email.com"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={isCreatingCustomer}
-                className="w-full py-5 bg-indigo-600 text-white rounded-3xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-1 transition-all uppercase tracking-widest text-[10px] font-medium mt-4"
-              >
-                {isCreatingCustomer ? "⏳ Creando..." : "✅ Registrar y Seleccionar"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <QuickCustomerModal
+        isOpen={showQuickCustomerModal}
+        onClose={() => setShowQuickCustomerModal(false)}
+        onCustomerCreated={(c) => {
+          setClientes(prev => [...prev, c]);
+          setClienteId(c.id.toString());
+          setClienteSearch(`${c.nombre || c.razon_social} ${c.documento ? `(${c.documento})` : ''}`);
+        }}
+      />
 
       {/* Modal para Crear Separado sin salir de ventas */}
       {showCreateSeparadoModal && (
@@ -1695,6 +1630,9 @@ function Productos() {
           </div>
         </div>
       )}
+
+      {/* Modal Ruleta de Descuentos */}
+      <RuletaDescuentos isOpen={showRuleta} onClose={() => setShowRuleta(false)} />
     </div>
   );
 }

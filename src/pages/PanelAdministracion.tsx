@@ -38,7 +38,7 @@ function PanelAdministracion() {
   const canSeeHR = hasAccess("recursos_humanos");
   const canSeeInventory = hasAccess("inventario") || hasAccess("ajustes") || hasAccess("ingreso") || hasAccess("kardex");
   const canSeeFiscal = hasAccess("configuracion") || hasAccess("clientes") || hasAccess("proveedores");
-  const canSeeFinances = hasAccess("facturas_venta") || hasAccess("facturas_compra") || hasAccess("separados");
+  const canSeeFinances = hasAccess("facturas_venta") || hasAccess("facturas_compra") || hasAccess("separados") || hasAccess("cartera");
 
   return (
     <div className="max-w-[1400px] mx-auto animate-in fade-in duration-700 pb-20">
@@ -133,6 +133,18 @@ function PanelAdministracion() {
                 module="separados"
                 highlight 
               />
+              <AdminCard 
+                to="/cotizaciones" icon="📝" title="Cotizaciones" 
+                desc="Crea presupuestos en PDF para tus clientes sin descontar de tu inventario físico." 
+                color="amber" 
+                module="venta"
+              />
+              <AdminCard 
+                to="/cartera" icon="📒" title="Cartera (CxC / CxP)" 
+                desc="Gestión de Cuentas por Cobrar a clientes y Cuentas por Pagar a proveedores." 
+                color="emerald" 
+                module="cartera"
+              />
             </div>
           </section>
         )}
@@ -156,6 +168,12 @@ function PanelAdministracion() {
                 desc="Navega a través del tiempo sobre tus remisiones de proveedor pasadas y edítalas." 
                 color="amber" 
                 module="facturas_compra"
+              />
+              <AdminCard 
+                to="/documento-soporte" icon="🧾" title="Doc. Soporte" 
+                desc="Registra compras a no obligados a facturar y gestiona tus soportes electrónicos." 
+                color="emerald" 
+                module="compras"
               />
               <AdminCard 
                 to="/inventario-global" icon="🔍" title="Inventario Global" 

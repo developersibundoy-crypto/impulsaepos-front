@@ -16,6 +16,7 @@ import Dashboard from "./pages/Dashboard";
 import PrediccionesAI from "./pages/PrediccionesAI";
 import PanelAdministracion from "./pages/PanelAdministracion";
 import Separados from "./pages/Separados";
+import DocumentoSoporte from "./pages/DocumentoSoporte";
 import Login from "./pages/Login";
 import RegistroSaaS from "./pages/RegistroSaaS";
 import SuperAdminSaaS from "./pages/SuperAdminSaaS";
@@ -23,7 +24,9 @@ import InventarioAdmin from "./pages/InventarioAdmin";
 import Kardex from "./pages/Kardex";
 import FacturacionElectronica from "./pages/FacturacionElectronica";
 import ConfiguracionDian from "./pages/ConfiguracionDian";
+import Cotizaciones from "./pages/Cotizaciones";
 import Renovacion from "./pages/Renovacion";
+import Cartera from "./pages/Cartera";
 
 import "./index.css";
 
@@ -397,8 +400,11 @@ function App() {
             <Route path="/ajustes" element={<RoleRoute allowedRoles={allRoles} module="ajustes"><AjustesInventario /></RoleRoute>} />
             <Route path="/facturas" element={<RoleRoute allowedRoles={allRoles} module="facturas_venta"><Facturas /></RoleRoute>} />
             <Route path="/facturacion-electronica" element={<RoleRoute allowedRoles={allRoles} module="facturas_venta" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA}><FacturacionElectronica /></RoleRoute>} />
+            <Route path="/documento-soporte" element={<RoleRoute allowedRoles={allRoles} module="compras"><DocumentoSoporte /></RoleRoute>} />
+            <Route path="/cotizaciones" element={<RoleRoute allowedRoles={allRoles} module="venta"><Cotizaciones /></RoleRoute>} />
             <Route path="/configuracion-dian" element={<RoleRoute allowedRoles={allRoles} module="configuracion" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA}><ConfiguracionDian /></RoleRoute>} />
             <Route path="/reportes" element={<RoleRoute allowedRoles={allRoles} module="reportes"><Reportes /></RoleRoute>} />
+            <Route path="/cartera" element={<RoleRoute allowedRoles={allRoles} module="cartera"><Cartera /></RoleRoute>} />
 
             <Route path="/separados" element={<RoleRoute allowedRoles={allRoles} module="separados"><Separados /></RoleRoute>} />
             <Route path="/inventario-global" element={<RoleRoute allowedRoles={allRoles} module="inventario"><InventarioAdmin /></RoleRoute>} />

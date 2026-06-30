@@ -1,20 +1,26 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import * as XLSX from 'xlsx';
+import { useReactToPrint } from "react-to-print";
+import PrintReceipt from "../components/PrintReceipt";
 
 function Reportes() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Filter States
   const [cajeros, setCajeros] = useState<any[]>([]);
   const [filtroCajero, setFiltroCajero] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroTipo, setFiltroTipo] = useState(""); // "" | "1" | "0"
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [filtroTipoFactura, setFiltroTipoFactura] = useState("Todas");
+  const dInitial = new Date();
+  const todayLocalInitial = `${dInitial.getFullYear()}-${String(dInitial.getMonth() + 1).padStart(2, '0')}-${String(dInitial.getDate()).padStart(2, '0')}`;
+
+  const [startDate, setStartDate] = useState(todayLocalInitial);
+  const [endDate, setEndDate] = useState(todayLocalInitial);
 
   const handleHoy = () => {
     const d = new Date();
@@ -29,6 +35,7 @@ function Reportes() {
     const params = new URLSearchParams();
     if (filtroCajero) params.append("cajeroId", filtroCajero);
     if (filtroTipo) params.append("es_servicio", filtroTipo);
+    if (filtroTipoFactura && filtroTipoFactura !== "Todas") params.append("tipo_factura", filtroTipoFactura);
     if (startDate) params.append("startDate", startDate);
     if (endDate) params.append("endDate", endDate);
 
@@ -58,6 +65,7 @@ function Reportes() {
     if (filtroCajero) params.append("cajeroId", filtroCajero);
     if (filtroCategoria) params.append("categoria", filtroCategoria);
     if (filtroTipo) params.append("es_servicio", filtroTipo);
+    if (filtroTipoFactura && filtroTipoFactura !== "Todas") params.append("tipo_factura", filtroTipoFactura);
     if (startDate) params.append("startDate", startDate);
     if (endDate) params.append("endDate", endDate);
     params.append("page", page.toString());
@@ -79,6 +87,7 @@ function Reportes() {
     if (filtroCajero) params.append("cajeroId", filtroCajero);
     if (filtroCategoria) params.append("categoria", filtroCategoria);
     if (filtroTipo) params.append("es_servicio", filtroTipo);
+    if (filtroTipoFactura && filtroTipoFactura !== "Todas") params.append("tipo_factura", filtroTipoFactura);
     if (startDate) params.append("startDate", startDate);
     if (endDate) params.append("endDate", endDate);
 
@@ -91,10 +100,10 @@ function Reportes() {
         console.error(err);
         setLoading(false);
       });
-    
+
     fetchDetailedReport(1);
     fetchSoldCategories();
-  }, [filtroCajero, filtroCategoria, filtroTipo, startDate, endDate]);
+  }, [filtroCajero, filtroCategoria, filtroTipo, filtroTipoFactura, startDate, endDate]);
 
   const handleExportVentasExcel = async () => {
     setLoading(true);
@@ -103,6 +112,7 @@ function Reportes() {
       if (filtroCajero) params.append("cajeroId", filtroCajero);
       if (filtroCategoria) params.append("categoria", filtroCategoria);
       if (filtroTipo) params.append("es_servicio", filtroTipo);
+      if (filtroTipoFactura && filtroTipoFactura !== "Todas") params.append("tipo_factura", filtroTipoFactura);
       if (startDate) params.append("startDate", startDate);
       if (endDate) params.append("endDate", endDate);
       params.append("limit", "5000"); // Obtenemos un lote grande para el reporte global
@@ -126,6 +136,7 @@ function Reportes() {
         "VENTA TOTAL ($)": p.subtotal,
         "COMISIÓN ($)": p.comision || 0,
         "UTILIDAD (GANANCIA) ($)": p.utilidad,
+        "TIPO DOCUMENTO": p.tipo_factura === 'ELECTRONICA' ? 'Factura Electrónica' : 'Factura POS',
         "ESTADO": "CONFIRMADO"
       }));
 
@@ -148,6 +159,7 @@ function Reportes() {
         { wch: 20 }, // Venta Total
         { wch: 18 }, // Comision
         { wch: 20 }, // Utilidad
+        { wch: 20 }, // Tipo Documento
         { wch: 15 }  // Estado
       ];
       worksheet['!cols'] = columnWidths;
@@ -194,12 +206,36 @@ function Reportes() {
     XLSX.writeFile(workbook, `REPORTE_CONTROL_CAJA_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const [activeTab, setActiveTab] = useState<"general" | "caja">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "caja" | "financiero">("general");
+
+  const [dataFinanciera, setDataFinanciera] = useState<any>(null);
+  const [loadingFinanciero, setLoadingFinanciero] = useState(false);
+
+  const fetchFinanciero = () => {
+    setLoadingFinanciero(true);
+    const params = new URLSearchParams();
+    if (startDate) params.append("startDate", startDate);
+    if (endDate) params.append("endDate", endDate);
+
+    API.get(`/reportes/financiero?${params.toString()}`).then(res => {
+      setDataFinanciera(res.data);
+      setLoadingFinanciero(false);
+    }).catch(err => {
+      console.error(err);
+      setLoadingFinanciero(false);
+    });
+  };
+
+  useEffect(() => {
+    if (activeTab === "financiero") {
+      fetchFinanciero();
+    }
+  }, [activeTab, startDate, endDate]);
 
   // Caja Report States
   const [reportesCaja, setReportesCaja] = useState<any[]>([]);
   const [loadingCaja, setLoadingCaja] = useState(false);
-  const [filtrosCaja, setFiltrosCaja] = useState({ desde: '', hasta: '', usuarioId: '', estado: '' });
+  const [filtrosCaja, setFiltrosCaja] = useState({ desde: todayLocalInitial, hasta: todayLocalInitial, usuarioId: '', estado: '' });
   const [expandedCajaRow, setExpandedCajaRow] = useState<number | null>(null);
   const [movimientosDetalle, setMovimientosDetalle] = useState<any[]>([]);
   const [loadingMovs, setLoadingMovs] = useState(false);
@@ -209,7 +245,7 @@ function Reportes() {
       setExpandedCajaRow(null);
       return;
     }
-    
+
     setExpandedCajaRow(sesionId);
     setLoadingMovs(true);
     try {
@@ -246,28 +282,67 @@ function Reportes() {
     }
   }, [activeTab, filtrosCaja]);
 
+  const printCajaRef = useRef<HTMLDivElement>(null);
+  const [cierreDataPrint, setCierreDataPrint] = useState<any>(null);
+  const [empresaData, setEmpresaData] = useState<any>(null);
+
+  useEffect(() => {
+    API.get("/empresa").then(res => setEmpresaData(res.data)).catch(console.error);
+  }, []);
+
+  const reactToPrintCajaFn = useReactToPrint({ contentRef: printCajaRef });
+
+  const handleImprimirCaja = (r: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCierreDataPrint({
+      cajero_nombre: r.username || 'General',
+      base_caja: parseFloat(r.base_caja || 0),
+      total_ventas: parseFloat(r.total_efectivo || 0) + parseFloat(r.total_transferencia || 0),
+      total_efectivo: parseFloat(r.total_efectivo || 0),
+      total_transferencia: parseFloat(r.total_transferencia || 0),
+      total_ingresos: parseFloat(r.total_ingresos || 0),
+      total_salidas: parseFloat(r.total_salidas || 0),
+      valor_esperado: parseFloat(r.base_caja || 0) + parseFloat(r.total_efectivo || 0) + parseFloat(r.total_ingresos || 0) - parseFloat(r.total_salidas || 0),
+      valor_reportado: parseFloat(r.dinero_reportado || 0),
+      diferencia: parseFloat(r.diferencia || 0),
+      fecha_apertura: r.fecha_apertura,
+      fecha_cierre: r.fecha_cierre || new Date().toISOString()
+    });
+  };
+
+  useEffect(() => {
+    if (cierreDataPrint) {
+      reactToPrintCajaFn();
+    }
+  }, [cierreDataPrint, reactToPrintCajaFn]);
+
   const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
   return (
     <div className="max-w-[1400px] mx-auto animate-in fade-in duration-700 pb-20">
-      
-      {/* Tab Switcher */}
+
       <div className="flex gap-4 mb-8 no-print">
-        <button 
+        <button
           onClick={() => setActiveTab("general")}
           className={`px-8 py-3 rounded-2xl font-medium text-xs uppercase tracking-widest transition-all ${activeTab === "general" ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'}`}
         >
           📈 Analítica General
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab("caja")}
           className={`px-8 py-3 rounded-2xl font-medium text-xs uppercase tracking-widest transition-all ${activeTab === "caja" ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'}`}
         >
           💰 Control de Caja
         </button>
+        <button
+          onClick={() => setActiveTab("financiero")}
+          className={`px-8 py-3 rounded-2xl font-medium text-xs uppercase tracking-widest transition-all ${activeTab === "financiero" ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-100' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'}`}
+        >
+          🏦 Panel Financiero
+        </button>
       </div>
 
-      {activeTab === "general" ? (
+      {activeTab === "general" && (
         <>
           {/* Header & Filters Section */}
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-8 mb-12 pb-8 border-b border-slate-200">
@@ -289,7 +364,7 @@ function Reportes() {
                     <button onClick={handleHoy} className="px-4 py-2 bg-white text-indigo-600 text-[10px] rounded-xl shadow-sm border border-slate-100 hover:bg-indigo-50 transition-colors uppercase">Hoy</button>
                   </div>
                 </div>
-                
+
                 <div className="space-y-1 flex-1 min-w-[200px]">
                   <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Cajero</label>
                   <select value={filtroCajero} onChange={e => setFiltroCajero(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm text-slate-700 focus:bg-white outline-none">
@@ -315,6 +390,15 @@ function Reportes() {
                     <option value="1">⚡ SOLO SERVICIOS</option>
                   </select>
                 </div>
+
+                <div className="space-y-1 flex-1 min-w-[180px]">
+                  <label className="text-[10px] text-slate-400 uppercase tracking-widest ml-1">Tipo de Factura</label>
+                  <select value={filtroTipoFactura} onChange={e => setFiltroTipoFactura(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm text-slate-700 focus:bg-white outline-none">
+                    <option value="Todas">📄 TODOS LOS TIPOS</option>
+                    <option value="POS">💵 SOLO POS</option>
+                    <option value="ELECTRONICA">⚡ SOLO ELECTRÓNICA</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -326,406 +410,421 @@ function Reportes() {
             </div>
           ) : (
             <div className="space-y-12">
-          
-          {/* Main Metric Cards - Executive Suite */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-            
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
-                <div className="relative z-10">
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-rose-500 mb-2 block">IVA Recaudado</span>
-                  <div className="text-3xl text-rose-600 tracking-tighter truncate">{formatCOP(data.general.total_iva || 0)}</div>
-                  <div className="mt-4 flex items-center gap-2">
-                    <span className="px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] uppercase italic">Impuestos Indirectos</span>
+
+              {/* Main Metric Cards - Executive Suite */}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+                  <div className="relative z-10">
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-rose-500 mb-2 block">IVA Recaudado</span>
+                    <div className="text-3xl text-rose-600 tracking-tighter truncate">{formatCOP(data.general.total_iva || 0)}</div>
+                    <div className="mt-4 flex items-center gap-2">
+                      <span className="px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-[10px] uppercase italic">Impuestos Indirectos</span>
+                    </div>
                   </div>
+                  <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">🏦</div>
                 </div>
-                <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">🏦</div>
-            </div>
 
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
-                <div className="relative z-10">
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-slate-400 mb-2 block">Ventas Netas (Sin IVA)</span>
-                  <div className="text-3xl text-slate-900 tracking-tighter truncate">{formatCOP(data.general.total_ingresos)}</div>
-                  <div className="mt-4 flex items-center gap-2">
-                    <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] uppercase italic">Base Grabable</span>
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+                  <div className="relative z-10">
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-slate-400 mb-2 block">Ventas Netas (Sin IVA)</span>
+                    <div className="text-3xl text-slate-900 tracking-tighter truncate">{formatCOP(data.general.total_ingresos)}</div>
+                    <div className="mt-4 flex items-center gap-2">
+                      <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] uppercase italic">Base Grabable</span>
+                    </div>
                   </div>
+                  <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">💰</div>
                 </div>
-                <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">💰</div>
-            </div>
 
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
-                <div className="relative z-10">
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-emerald-500 mb-2 block">Utilidad Neta</span>
-                  <div className="text-3xl text-emerald-600 tracking-tighter truncate">{formatCOP(data.general.total_utilidad_global || 0)}</div>
-                  <div className="mt-4 flex items-center gap-2">
-                    <span className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] uppercase italic">
-                      Margen: {data.general.total_ingresos > 0 ? ((data.general.total_utilidad_global / data.general.total_ingresos) * 100).toFixed(1) : 0}%
-                    </span>
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+                  <div className="relative z-10">
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-emerald-500 mb-2 block">Utilidad Neta</span>
+                    <div className="text-3xl text-emerald-600 tracking-tighter truncate">{formatCOP(data.general.total_utilidad_global || 0)}</div>
+                    <div className="mt-4 flex items-center gap-2">
+                      <span className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] uppercase italic">
+                        Margen: {data.general.total_ingresos > 0 ? ((data.general.total_utilidad_global / data.general.total_ingresos) * 100).toFixed(1) : 0}%
+                      </span>
+                    </div>
                   </div>
+                  <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">📈</div>
                 </div>
-                <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">📈</div>
-            </div>
 
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
-                <div className="relative z-10">
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-sky-500 mb-2 block">Transacciones</span>
-                  <div className="text-3xl text-sky-600 tracking-tighter truncate">{data.general.total_ventas}</div>
-                  <div className="mt-4 flex items-center gap-2 text-xs text-slate-400 italic">
-                    Tickets emitidos con éxito
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+                  <div className="relative z-10">
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-sky-500 mb-2 block">Transacciones</span>
+                    <div className="text-3xl text-sky-600 tracking-tighter truncate">{data.general.total_ventas}</div>
+                    <div className="mt-4 flex items-center gap-2 text-xs text-slate-400 italic">
+                      Tickets emitidos con éxito
+                    </div>
                   </div>
+                  <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">🧾</div>
                 </div>
-                <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">🧾</div>
-            </div>
 
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
-                <div className="relative z-10">
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-amber-500 mb-2 block">Ticket Promedio</span>
-                  <div className="text-3xl text-amber-600 tracking-tighter truncate">
-                    {formatCOP(data.general.total_ventas > 0 ? (data.general.total_ingresos / data.general.total_ventas) : 0)}
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+                  <div className="relative z-10">
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-amber-500 mb-2 block">Ticket Promedio</span>
+                    <div className="text-3xl text-amber-600 tracking-tighter truncate">
+                      {formatCOP(data.general.total_ventas > 0 ? (data.general.total_ingresos / data.general.total_ventas) : 0)}
+                    </div>
+                    <div className="mt-4 flex items-center gap-2 text-xs text-slate-400 italic">
+                      Gasto medio por cliente
+                    </div>
                   </div>
-                  <div className="mt-4 flex items-center gap-2 text-xs text-slate-400 italic">
-                    Gasto medio por cliente
-                  </div>
+                  <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">⚖️</div>
                 </div>
-                <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">⚖️</div>
-            </div>
 
-          </div>
-
-          {/* Section Removed - Moved to AI Predictions */}
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
-            {/* Chart Section */}
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-shadow duration-500">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-xl text-slate-900 tracking-tight flex items-center gap-2">
-                  <span className="w-2 h-6 bg-emerald-500 rounded-full"></span> Rendimiento por Categoría
-                </h3>
-                <div className="flex items-center gap-2 text-[10px] text-slate-400 tracking-widest bg-slate-50 px-4 py-2 rounded-full uppercase border border-slate-100">Ventas en Volúmen COP</div>
               </div>
-              <div className="h-[400px] w-full">
-                {data.ingresosCategorias.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-slate-400 font-normal italic">
-                    Sin ventas registradas bajo estos filtros.
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={data.ingresosCategorias.map((c: any) => ({
-                        categoria: c.categoria,
-                        recaudado: Number(c.total_recaudado) || 0,
-                        utilidad: Number(c.total_utilidad) || 0
-                      })).filter((c: any) => c.recaudado > 0)}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis 
-                        dataKey="categoria" 
-                        tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
-                        tickLine={false}
-                        axisLine={false}
-                        dy={10}
-                      />
-                      <YAxis 
-                        tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                        tick={{ fill: '#cbd5e1', fontSize: 11, fontWeight: 600 }}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <RechartsTooltip 
-                        cursor={{ fill: '#f8fafc' }}
-                        content={({ active, payload }: any) => {
-                          if (active && payload && payload.length) {
-                            const dataPoint = payload[0].payload;
-                            return (
-                              <div className="bg-white p-5 shadow-2xl rounded-3xl border border-slate-100 min-w-[220px]">
-                                <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-50 pb-2">{dataPoint.categoria}</p>
-                                <div className="space-y-3">
-                                  <div>
-                                    <span className="text-[9px] font-medium text-slate-400 uppercase block">Venta Bruta</span>
-                                    <p className="text-slate-900 font-medium text-lg">{formatCOP(dataPoint.recaudado)}</p>
-                                  </div>
-                                  <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
-                                    <span className="text-[9px] font-medium text-emerald-600 uppercase block">Utilidad Real (Ganancia)</span>
-                                    <p className="text-emerald-700 font-medium text-lg">{formatCOP(dataPoint.utilidad)}</p>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Bar dataKey="recaudado" radius={[12, 12, 0, 0]} barSize={50}>
-                        {data.ingresosCategorias.map((entry: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
-            </div>
 
-            {/* Top Products Card */}
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col hover:shadow-xl transition-shadow duration-500">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="space-y-1">
-                    <h3 className="text-2xl text-indigo-600 tracking-tight flex items-center gap-3">
-                      <span className="w-2.5 h-8 bg-indigo-600 rounded-full"></span> Top Best Sellers
+              {/* Section Removed - Moved to AI Predictions */}
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
+                {/* Chart Section */}
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-shadow duration-500">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-xl text-slate-900 tracking-tight flex items-center gap-2">
+                      <span className="w-2 h-6 bg-emerald-500 rounded-full"></span> Rendimiento por Categoría
                     </h3>
-                    <p className="text-slate-400 text-sm font-medium ml-5">Análisis de productos con mayor frecuencia de salida.</p>
+                    <div className="flex items-center gap-2 text-[10px] text-slate-400 tracking-widest bg-slate-50 px-4 py-2 rounded-full uppercase border border-slate-100">Ventas en Volúmen COP</div>
                   </div>
-                  <span className="text-[11px] uppercase tracking-[0.2em] text-indigo-600 bg-indigo-50 px-4 py-2 rounded-2xl border border-indigo-100 shadow-sm shadow-indigo-100/20">Top 5 Estrellas</span>
+                  <div className="h-[400px] w-full">
+                    {data.ingresosCategorias.length === 0 ? (
+                      <div className="flex items-center justify-center h-full text-slate-400 font-normal italic">
+                        Sin ventas registradas bajo estos filtros.
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={data.ingresosCategorias.map((c: any) => ({
+                            categoria: c.categoria,
+                            recaudado: Number(c.total_recaudado) || 0,
+                            utilidad: Number(c.total_utilidad) || 0
+                          })).filter((c: any) => c.recaudado > 0)}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis
+                            dataKey="categoria"
+                            tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
+                            tickLine={false}
+                            axisLine={false}
+                            dy={10}
+                          />
+                          <YAxis
+                            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                            tick={{ fill: '#cbd5e1', fontSize: 11, fontWeight: 600 }}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <RechartsTooltip
+                            cursor={{ fill: '#f8fafc' }}
+                            content={({ active, payload }: any) => {
+                              if (active && payload && payload.length) {
+                                const dataPoint = payload[0].payload;
+                                return (
+                                  <div className="bg-white p-5 shadow-2xl rounded-3xl border border-slate-100 min-w-[220px]">
+                                    <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-50 pb-2">{dataPoint.categoria}</p>
+                                    <div className="space-y-3">
+                                      <div>
+                                        <span className="text-[9px] font-medium text-slate-400 uppercase block">Venta Bruta</span>
+                                        <p className="text-slate-900 font-medium text-lg">{formatCOP(dataPoint.recaudado)}</p>
+                                      </div>
+                                      <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
+                                        <span className="text-[9px] font-medium text-emerald-600 uppercase block">Utilidad Real (Ganancia)</span>
+                                        <p className="text-emerald-700 font-medium text-lg">{formatCOP(dataPoint.utilidad)}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="recaudado" radius={[12, 12, 0, 0]} barSize={50}>
+                            {data.ingresosCategorias.map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
                 </div>
-                
-                <div className="flex-1 overflow-x-auto custom-scrollbar">
-                  <table className="w-full text-left min-w-[600px]">
-                    <thead>
-                      <tr className="text-[11px] text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
-                        <th className="pb-4 pl-4">Producto Estrella</th>
-                        <th className="pb-4 text-center">Frecuencia</th>
-                        <th className="pb-4 text-right pr-4">Nivel</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {data.topProductos.length === 0 ? (
-                        <tr><td colSpan={3} className="py-24 text-center font-normal text-slate-300 italic uppercase text-xs tracking-widest">Sin registro de movimientos.</td></tr>
-                      ) : (
-                        data.topProductos.map((p: any, i: number) => (
-                          <tr key={i} className="group hover:bg-slate-50/80 transition-all duration-300">
-                            <td className="py-4 pl-4">
-                               <div className="flex items-center gap-4">
+
+                {/* Top Products Card */}
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col hover:shadow-xl transition-shadow duration-500">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="space-y-1">
+                      <h3 className="text-2xl text-indigo-600 tracking-tight flex items-center gap-3">
+                        <span className="w-2.5 h-8 bg-indigo-600 rounded-full"></span> Top Best Sellers
+                      </h3>
+                      <p className="text-slate-400 text-sm font-medium ml-5">Análisis de productos con mayor frecuencia de salida.</p>
+                    </div>
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-indigo-600 bg-indigo-50 px-4 py-2 rounded-2xl border border-indigo-100 shadow-sm shadow-indigo-100/20">Top 5 Estrellas</span>
+                  </div>
+
+                  <div className="flex-1 overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left min-w-[600px]">
+                      <thead>
+                        <tr className="text-[11px] text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
+                          <th className="pb-4 pl-4">Producto Estrella</th>
+                          <th className="pb-4 text-center">Frecuencia</th>
+                          <th className="pb-4 text-right pr-4">Nivel</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {data.topProductos.length === 0 ? (
+                          <tr><td colSpan={3} className="py-24 text-center font-normal text-slate-300 italic uppercase text-xs tracking-widest">Sin registro de movimientos.</td></tr>
+                        ) : (
+                          data.topProductos.map((p: any, i: number) => (
+                            <tr key={i} className="group hover:bg-slate-50/80 transition-all duration-300">
+                              <td className="py-4 pl-4">
+                                <div className="flex items-center gap-4">
                                   <div className="w-10 h-10 bg-slate-50 rounded-2xl flex items-center justify-center text-xl shadow-inner border border-slate-100 group-hover:bg-indigo-50 group-hover:border-indigo-100 transition-colors duration-500">📦</div>
                                   <div className="flex flex-col text-left">
                                     <span className="text-base text-slate-900 group-hover:text-indigo-600 transition-colors tracking-tight uppercase leading-tight font-normal">{p.nombre}</span>
                                     <span className="text-[10px] text-slate-400 uppercase tracking-[0.3em] font-mono mt-1">{p.categoria || "S / CAT"}</span>
                                   </div>
-                               </div>
-                            </td>
-                            <td className="py-4 text-center">
-                               <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-2xl tracking-tighter border border-indigo-100/50">
+                                </div>
+                              </td>
+                              <td className="py-4 text-center">
+                                <div className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-2xl tracking-tighter border border-indigo-100/50">
                                   <span className="text-lg font-medium">{p.total_vendido}</span>
                                   <span className="text-[10px] opacity-60 font-medium">UNIDADES</span>
                                 </div>
-                            </td>
-                            <td className="py-4 text-right pr-4">
-                               <div className="flex flex-col items-end">
-                                  <div className="px-3 py-1 bg-slate-900 text-white rounded-xl text-[10px] tracking-widest uppercase shadow-lg shadow-slate-200 group-hover:bg-indigo-900 transition-colors font-medium italic">Rank {i+1}</div>
-                               </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-            </div>
-          </div>
-
-          <div className="space-y-12">
-            
-            {/* Cajero Ranking Card Mejorado */}
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col h-full hover:shadow-xl transition-shadow duration-500">
-              <div className="flex items-center justify-between mb-8">
-                <div className="space-y-1">
-                  <h3 className="text-2xl text-slate-900 tracking-tight flex items-center gap-3">
-                    <span className="w-2.5 h-8 bg-amber-500 rounded-full"></span> Rendimiento de Personal
-                  </h3>
-                  <p className="text-slate-400 text-sm font-medium ml-5">Productividad y ventas por cada cajero.</p>
-                </div>
-                <span className="text-[11px] uppercase tracking-[0.2em] text-amber-600 bg-amber-50 px-4 py-2 rounded-2xl border border-amber-100/50 shadow-sm shadow-amber-100/20">Clasificación de Ventas</span>
-              </div>
-              
-              <div className="flex-1 overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left min-w-[600px]">
-                  <thead>
-                    <tr className="text-[11px] text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
-                      <th className="pb-4 pl-4">Cajero / Asesor</th>
-                      <th className="pb-4 text-center">Tickets</th>
-                      <th className="pb-4 text-center">Ticket Promedio</th>
-                      <th className="pb-4 text-center">Utilidad Generada</th>
-                      <th className="pb-4 text-right pr-4">Total Recaudado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {data.rendimientoCajeros.length === 0 ? (
-                      <tr><td colSpan={5} className="py-24 text-center font-normal text-slate-300 italic uppercase text-xs tracking-widest">Sin datos suficientes para proyectar.</td></tr>
-                    ) : (
-                      data.rendimientoCajeros.map((c: any, i: number) => (
-                        <tr key={i} className="group hover:bg-slate-50/80 transition-all duration-300">
-                          <td className="py-4 pl-4">
-                            <div className="flex items-center gap-4">
-                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg shadow-md transition-transform group-hover:scale-110 duration-500 ${
-                                    i === 0 ? 'bg-gradient-to-br from-amber-100 to-amber-200 text-amber-700 ring-2 ring-amber-50' : 
-                                    i === 1 ? 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700 ring-2 ring-slate-50' : 
-                                    'bg-gradient-to-br from-orange-50 to-orange-100 text-orange-700 ring-2 ring-orange-50'
-                                }`}>
-                                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                              </td>
+                              <td className="py-4 text-right pr-4">
+                                <div className="flex flex-col items-end">
+                                  <div className="px-3 py-1 bg-slate-900 text-white rounded-xl text-[10px] tracking-widest uppercase shadow-lg shadow-slate-200 group-hover:bg-indigo-900 transition-colors font-medium italic">Rank {i + 1}</div>
                                 </div>
-                                <div className="flex flex-col">
-                                  <span className="text-base text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight font-normal">{c.nombre || "Asesor General"}</span>
-                                  <span className="text-[10px] text-slate-400 uppercase tracking-widest">Auditoría de Venta</span>
-                                </div>
-                            </div>
-                          </td>
-                          <td className="py-4 text-center">
-                            <div className="inline-flex flex-col items-center">
-                               <span className="text-lg text-slate-900 tracking-tighter leading-none font-medium">{c.cantidad_facturas}</span>
-                               <span className="text-[9px] text-slate-400 uppercase mt-1 tracking-tighter">Tickets</span>
-                            </div>
-                          </td>
-                          <td className="py-4 text-center">
-                             <div className="inline-flex flex-col items-center">
-                               <span className="text-base text-indigo-600 tracking-tighter leading-none font-normal">
-                                  {formatCOP(c.cantidad_facturas > 0 ? (c.dinero_recaudado / c.cantidad_facturas) : 0)}
-                               </span>
-                               <span className="text-[9px] text-indigo-400 uppercase mt-1 tracking-tighter">Promedio</span>
-                            </div>
-                          </td>
-                          <td className="py-4 text-center">
-                            <div className="inline-block px-4 py-2 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100/50">
-                               <span className="text-base tracking-tighter italic font-medium">{formatCOP(c.total_utilidad || 0)}</span>
-                            </div>
-                          </td>
-                          <td className="py-4 text-right pr-4">
-                            <div className="text-xl text-slate-900 tracking-tighter font-medium">{formatCOP(c.dinero_recaudado)}</div>
-                            <div className="flex gap-2 justify-end mt-2">
-                                <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-xl">
-                                   <span className="text-[8px] text-slate-400 uppercase tracking-widest">Efectivo:</span>
-                                   <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_efectivo)}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-xl">
-                                   <span className="text-[8px] text-slate-400 uppercase tracking-widest">Digital:</span>
-                                   <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_transferencia)}</span>
-                                </div>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* DETALLE DE PRODUCTOS VENDIDOS CON PAGINACIÓN */}
-            <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-xl overflow-hidden animate-in zoom-in duration-500">
-               <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
-                  <div className="space-y-1">
-                    <h3 className="text-2xl text-slate-950 font-medium tracking-tighter flex items-center gap-3 uppercase italic">
-                      <span className="w-3 h-8 bg-indigo-600 rounded-full"></span> Detalle de Ventas por Producto
-                    </h3>
-                    <p className="text-slate-400 text-xs font-normal uppercase tracking-widest ml-6">Auditoría completa de movimientos de inventario ({totalItems} registros).</p>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                  <button 
-                    onClick={handleExportVentasExcel}
-                    className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-medium text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-emerald-100 flex items-center gap-3 italic active:scale-95"
-                  >
-                    <span>📊</span> Descargar Reporte Ventas (.xlsx)
-                  </button>
-               </div>
+                </div>
+              </div>
 
-               <div className="overflow-x-auto custom-scrollbar">
-                  <table className="w-full text-left min-w-[800px]">
-                    <thead>
-                      <tr className="text-[10px] text-slate-400 uppercase tracking-[0.3em] border-b border-slate-100 font-medium italic">
-                        <th className="pb-4 pl-4">Fecha / Hora</th>
-                        <th className="pb-4">Producto</th>
-                        <th className="pb-4">Cliente</th>
-                        <th className="pb-4">Cajero</th>
-                        <th className="pb-4 text-center">Cantidad</th>
-                        <th className="pb-4 text-center">Comisión</th>
-                        <th className="pb-4 text-right pr-4">Venta Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {paginatedProducts.length === 0 ? (
-                        <tr><td colSpan={6} className="py-20 text-center text-slate-300 font-medium uppercase italic tracking-widest">Sin movimientos registrados.</td></tr>
-                      ) : (
-                        paginatedProducts.map((p: any, i: number) => (
-                          <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="py-4 pl-4">
-                               <div className="flex flex-col">
+              <div className="space-y-12">
+
+                {/* Cajero Ranking Card Mejorado */}
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col h-full hover:shadow-xl transition-shadow duration-500">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="space-y-1">
+                      <h3 className="text-2xl text-slate-900 tracking-tight flex items-center gap-3">
+                        <span className="w-2.5 h-8 bg-amber-500 rounded-full"></span> Rendimiento de Personal
+                      </h3>
+                      <p className="text-slate-400 text-sm font-medium ml-5">Productividad y ventas por cada cajero.</p>
+                    </div>
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-amber-600 bg-amber-50 px-4 py-2 rounded-2xl border border-amber-100/50 shadow-sm shadow-amber-100/20">Clasificación de Ventas</span>
+                  </div>
+
+                  <div className="flex-1 overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left min-w-[600px]">
+                      <thead>
+                        <tr className="text-[11px] text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
+                          <th className="pb-4 pl-4">Cajero / Asesor</th>
+                          <th className="pb-4 text-center">Tickets</th>
+                          <th className="pb-4 text-center">Ticket Promedio</th>
+                          <th className="pb-4 text-center">Utilidad Generada</th>
+                          <th className="pb-4 text-right pr-4">Total Recaudado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {data.rendimientoCajeros.length === 0 ? (
+                          <tr><td colSpan={5} className="py-24 text-center font-normal text-slate-300 italic uppercase text-xs tracking-widest">Sin datos suficientes para proyectar.</td></tr>
+                        ) : (
+                          data.rendimientoCajeros.map((c: any, i: number) => (
+                            <tr key={i} className="group hover:bg-slate-50/80 transition-all duration-300">
+                              <td className="py-4 pl-4">
+                                <div className="flex items-center gap-4">
+                                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg shadow-md transition-transform group-hover:scale-110 duration-500 ${i === 0 ? 'bg-gradient-to-br from-amber-100 to-amber-200 text-amber-700 ring-2 ring-amber-50' :
+                                      i === 1 ? 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700 ring-2 ring-slate-50' :
+                                        'bg-gradient-to-br from-orange-50 to-orange-100 text-orange-700 ring-2 ring-orange-50'
+                                    }`}>
+                                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-base text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight font-normal">{c.nombre || "Asesor General"}</span>
+                                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Auditoría de Venta</span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-4 text-center">
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="text-lg text-slate-900 tracking-tighter leading-none font-medium">{c.cantidad_facturas}</span>
+                                  <span className="text-[9px] text-slate-400 uppercase mt-1 tracking-tighter">Tickets</span>
+                                </div>
+                              </td>
+                              <td className="py-4 text-center">
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="text-base text-indigo-600 tracking-tighter leading-none font-normal">
+                                    {formatCOP(c.cantidad_facturas > 0 ? (c.dinero_recaudado / c.cantidad_facturas) : 0)}
+                                  </span>
+                                  <span className="text-[9px] text-indigo-400 uppercase mt-1 tracking-tighter">Promedio</span>
+                                </div>
+                              </td>
+                              <td className="py-4 text-center">
+                                <div className="inline-block px-4 py-2 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100/50">
+                                  <span className="text-base tracking-tighter italic font-medium">{formatCOP(c.total_utilidad || 0)}</span>
+                                </div>
+                              </td>
+                              <td className="py-4 text-right pr-4">
+                                <div className="text-xl text-slate-900 tracking-tighter font-medium">{formatCOP(c.dinero_recaudado)}</div>
+                                <div className="flex gap-2 justify-end mt-2">
+                                  <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Efectivo:</span>
+                                    <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_efectivo)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Digital:</span>
+                                    <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_transferencia)}</span>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* DETALLE DE PRODUCTOS VENDIDOS CON PAGINACIÓN */}
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-xl overflow-hidden animate-in zoom-in duration-500">
+                  <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
+                    <div className="space-y-1">
+                      <h3 className="text-2xl text-slate-950 font-medium tracking-tighter flex items-center gap-3 uppercase italic">
+                        <span className="w-3 h-8 bg-indigo-600 rounded-full"></span> Detalle de Ventas por Producto
+                      </h3>
+                      <p className="text-slate-400 text-xs font-normal uppercase tracking-widest ml-6">Auditoría completa de movimientos de inventario ({totalItems} registros).</p>
+                    </div>
+                    <button
+                      onClick={handleExportVentasExcel}
+                      className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-medium text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-emerald-100 flex items-center gap-3 italic active:scale-95"
+                    >
+                      <span>📊</span> Descargar Reporte Ventas (.xlsx)
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left min-w-[800px]">
+                      <thead>
+                        <tr className="text-[10px] text-slate-400 uppercase tracking-[0.3em] border-b border-slate-100 font-medium italic">
+                          <th className="pb-4 pl-4">Fecha / Hora</th>
+                          <th className="pb-4">Producto</th>
+                          <th className="pb-4">Cliente</th>
+                          <th className="pb-4">Documento</th>
+                          <th className="pb-4">Cajero</th>
+                          <th className="pb-4 text-center">Cantidad</th>
+                          <th className="pb-4 text-center">Comisión</th>
+                          <th className="pb-4 text-right pr-4">Venta Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {paginatedProducts.length === 0 ? (
+                          <tr><td colSpan={7} className="py-20 text-center text-slate-300 font-medium uppercase italic tracking-widest">Sin movimientos registrados.</td></tr>
+                        ) : (
+                          paginatedProducts.map((p: any, i: number) => (
+                            <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-4 pl-4">
+                                <div className="flex flex-col">
                                   <span className="text-xs text-slate-700 font-normal">{new Date(p.fecha).toLocaleDateString()}</span>
                                   <span className="text-[9px] text-slate-400 uppercase font-medium italic">{new Date(p.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                               </div>
-                            </td>
-                            <td className="py-4">
-                               <div className="flex flex-col">
+                                </div>
+                              </td>
+                              <td className="py-4">
+                                <div className="flex flex-col">
                                   <span className="text-sm text-slate-900 font-normal uppercase tracking-tight leading-none">{p.producto}</span>
                                   <span className="text-[10px] text-indigo-500 font-medium uppercase tracking-widest mt-1 italic">{p.categoria}</span>
-                               </div>
-                            </td>
-                            <td className="py-4">
-                               <div className="flex flex-col">
+                                </div>
+                              </td>
+                              <td className="py-4">
+                                <div className="flex flex-col">
                                   <span className={`text-xs font-normal uppercase ${p.cliente_id === 1 ? 'text-slate-300 italic' : 'text-slate-700'}`}>
                                     {p.cliente_id === 1 ? "Fca. General" : (p.cliente || "Consumidor")}
                                   </span>
-                               </div>
-                            </td>
-                            <td className="py-4">
-                               <span className="text-xs text-slate-500 font-normal uppercase italic">{p.cajero}</span>
-                            </td>
-                            <td className="py-4 text-center">
-                               <span className="px-3 py-1 bg-slate-100 text-slate-900 rounded-lg text-sm font-medium italic">{p.cantidad}</span>
-                            </td>
-                            <td className="py-4 text-center">
-                               <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-bold italic border border-amber-100">{formatCOP(p.comision || 0)}</span>
-                            </td>
-                            <td className="py-4 text-right pr-4">
-                               <div className="flex flex-col items-end">
+                                </div>
+                              </td>
+                              <td className="py-4">
+                                {p.tipo_factura === 'ELECTRONICA' ? (
+                                  <div className="flex flex-col">
+                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700 uppercase tracking-wider w-max">Electrónica</span>
+                                    <span className="text-[9px] text-slate-400 font-medium mt-1 uppercase tracking-wider">{p.prefijo || 'FE'}-{p.consecutivo}</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col">
+                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700 uppercase tracking-wider w-max">POS</span>
+                                    <span className="text-[9px] text-slate-400 font-medium mt-1 uppercase tracking-wider">#{p.factura_id}</span>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-4">
+                                <span className="text-xs text-slate-500 font-normal uppercase italic">{p.cajero}</span>
+                              </td>
+                              <td className="py-4 text-center">
+                                <span className="px-3 py-1 bg-slate-100 text-slate-900 rounded-lg text-sm font-medium italic">{p.cantidad}</span>
+                              </td>
+                              <td className="py-4 text-center">
+                                <span className="px-3 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-bold italic border border-amber-100">{formatCOP(p.comision || 0)}</span>
+                              </td>
+                              <td className="py-4 text-right pr-4">
+                                <div className="flex flex-col items-end">
                                   <span className="text-sm text-slate-950 font-medium tracking-tighter">{formatCOP(p.subtotal)}</span>
                                   <span className="text-[9px] text-emerald-600 font-medium italic uppercase">UT: {formatCOP(p.utilidad)}</span>
-                               </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-               </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
 
-               {/* Pagination Controls */}
-               {totalPages > 1 && (
-                 <div className="mt-8 flex items-center justify-between bg-slate-50 p-4 rounded-3xl border border-slate-100 no-print">
-                    <button 
-                      disabled={currentPage === 1}
-                      onClick={() => fetchDetailedReport(currentPage - 1)}
-                      className="px-6 py-3 bg-white border border-slate-200 text-slate-400 rounded-2xl font-medium text-[10px] uppercase tracking-widest hover:text-indigo-600 hover:shadow-xl transition-all disabled:opacity-30 disabled:hover:shadow-none italic active:scale-95"
-                    >
-                      ← Anterior
-                    </button>
-                    <div className="text-[10px] font-medium text-slate-900 uppercase tracking-[0.4em] italic bg-white px-8 py-3 rounded-full border border-slate-100 shadow-sm shadow-slate-200/50">
-                       Página {currentPage} de {totalPages}
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="mt-8 flex items-center justify-between bg-slate-50 p-4 rounded-3xl border border-slate-100 no-print">
+                      <button
+                        disabled={currentPage === 1}
+                        onClick={() => fetchDetailedReport(currentPage - 1)}
+                        className="px-6 py-3 bg-white border border-slate-200 text-slate-400 rounded-2xl font-medium text-[10px] uppercase tracking-widest hover:text-indigo-600 hover:shadow-xl transition-all disabled:opacity-30 disabled:hover:shadow-none italic active:scale-95"
+                      >
+                        ← Anterior
+                      </button>
+                      <div className="text-[10px] font-medium text-slate-900 uppercase tracking-[0.4em] italic bg-white px-8 py-3 rounded-full border border-slate-100 shadow-sm shadow-slate-200/50">
+                        Página {currentPage} de {totalPages}
+                      </div>
+                      <button
+                        disabled={currentPage === totalPages}
+                        onClick={() => fetchDetailedReport(currentPage + 1)}
+                        className="px-6 py-3 bg-white border border-slate-200 text-slate-400 rounded-2xl font-medium text-[10px] uppercase tracking-widest hover:text-indigo-600 hover:shadow-xl transition-all disabled:opacity-30 disabled:hover:shadow-none italic active:scale-95"
+                      >
+                        Siguiente →
+                      </button>
                     </div>
-                    <button 
-                      disabled={currentPage === totalPages}
-                      onClick={() => fetchDetailedReport(currentPage + 1)}
-                      className="px-6 py-3 bg-white border border-slate-200 text-slate-400 rounded-2xl font-medium text-[10px] uppercase tracking-widest hover:text-indigo-600 hover:shadow-xl transition-all disabled:opacity-30 disabled:hover:shadow-none italic active:scale-95"
-                    >
-                      Siguiente →
-                    </button>
-                 </div>
-               )}
-            </div>
+                  )}
+                </div>
 
-          </div>
-        </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
-      </>
-      ) : (
+
+      {activeTab === "caja" && (
         <div className="space-y-6 animate-in fade-in duration-500 pb-20">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
             <div>
               <h2 className="text-3xl font-medium text-slate-900 tracking-tighter uppercase italic">Control de Caja</h2>
               <p className="text-slate-500 text-sm font-medium uppercase tracking-widest mt-1">Historial ejecutivo de aperturas y cierres</p>
             </div>
-            
+
             <div className="flex flex-wrap gap-3 no-print">
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Cajero</label>
-                <select 
+                <select
                   value={filtrosCaja.usuarioId}
-                  onChange={(e) => setFiltrosCaja({...filtrosCaja, usuarioId: e.target.value})}
+                  onChange={(e) => setFiltrosCaja({ ...filtrosCaja, usuarioId: e.target.value })}
                   className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner uppercase"
                 >
                   <option value="">TODOS</option>
@@ -737,9 +836,9 @@ function Reportes() {
 
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Estado</label>
-                <select 
+                <select
                   value={filtrosCaja.estado}
-                  onChange={(e) => setFiltrosCaja({...filtrosCaja, estado: e.target.value})}
+                  onChange={(e) => setFiltrosCaja({ ...filtrosCaja, estado: e.target.value })}
                   className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner"
                 >
                   <option value="">TODOS</option>
@@ -750,24 +849,24 @@ function Reportes() {
 
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Desde</label>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={filtrosCaja.desde}
-                  onChange={(e) => setFiltrosCaja({...filtrosCaja, desde: e.target.value})}
+                  onChange={(e) => setFiltrosCaja({ ...filtrosCaja, desde: e.target.value })}
                   className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner"
                 />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Hasta</label>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={filtrosCaja.hasta}
-                  onChange={(e) => setFiltrosCaja({...filtrosCaja, hasta: e.target.value})}
+                  onChange={(e) => setFiltrosCaja({ ...filtrosCaja, hasta: e.target.value })}
                   className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner"
                 />
               </div>
 
-              <button 
+              <button
                 onClick={handleExportCajaExcel}
                 className="self-end px-6 py-3 bg-emerald-600 text-white rounded-2xl font-medium text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-emerald-100 flex items-center gap-3 active:scale-95 italic no-print"
               >
@@ -840,11 +939,11 @@ function Reportes() {
                               </div>
                             </td>
                           </tr>
-                          
+
                           {/* Sessions for this user */}
                           {group.sessions.map((r: any) => (
                             <React.Fragment key={r.id}>
-                              <tr 
+                              <tr
                                 onClick={() => toggleDetails(r.id)}
                                 className="hover:bg-slate-50/30 transition-all duration-300 group cursor-pointer"
                               >
@@ -861,32 +960,32 @@ function Reportes() {
                                 </td>
                                 <td className="px-6 py-5">
                                   <div className="flex flex-col gap-1">
-                                     <div className="flex items-center gap-2">
-                                        <span className="text-[9px] font-medium text-emerald-600 uppercase">A</span>
-                                        <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_apertura).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
-                                     </div>
-                                     {r.fecha_cierre && (
-                                       <div className="flex items-center gap-2">
-                                          <span className="text-[9px] font-medium text-rose-600 uppercase">C</span>
-                                          <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_cierre).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
-                                       </div>
-                                     )}
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[9px] font-medium text-emerald-600 uppercase">A</span>
+                                      <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_apertura).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                    </div>
+                                    {r.fecha_cierre && (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[9px] font-medium text-rose-600 uppercase">C</span>
+                                        <span className="text-[11px] font-medium text-slate-900 uppercase tracking-tighter">{new Date(r.fecha_cierre).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-6 py-5 text-right">
                                   <div className="flex flex-col">
-                                     <span className="text-xs font-medium text-slate-900">{formatCOP(r.total_efectivo || 0)}</span>
-                                     <span className="text-[10px] text-indigo-600 font-medium uppercase mt-1 block">Base: {formatCOP(r.base_caja)}</span>
+                                    <span className="text-xs font-medium text-slate-900">{formatCOP(r.total_efectivo || 0)}</span>
+                                    <span className="text-[10px] text-indigo-600 font-medium uppercase mt-1 block">Base: {formatCOP(r.base_caja)}</span>
                                   </div>
                                 </td>
                                 <td className="px-6 py-5 text-right">
                                   <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-100">{formatCOP(r.total_transferencia || 0)}</span>
                                 </td>
                                 <td className="px-6 py-5 text-right">
-                                   <span className="text-xs font-medium text-emerald-600">+{formatCOP(r.total_ingresos || 0)}</span>
+                                  <span className="text-xs font-medium text-emerald-600">+{formatCOP(r.total_ingresos || 0)}</span>
                                 </td>
                                 <td className="px-6 py-5 text-right">
-                                   <span className="text-xs font-medium text-rose-600">-{formatCOP(r.total_salidas || 0)}</span>
+                                  <span className="text-xs font-medium text-rose-600">-{formatCOP(r.total_salidas || 0)}</span>
                                 </td>
                                 <td className="px-6 py-5 text-sm font-medium text-slate-900 text-right tracking-tight">
                                   {formatCOP(r.dinero_reportado)}
@@ -897,9 +996,20 @@ function Reportes() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-5 text-center">
-                                  <span className={`px-3 py-1.5 rounded-xl text-[8px] font-medium uppercase tracking-widest border ${r.estado === 'Abierta' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
-                                    {r.estado} {expandedCajaRow === r.id ? '▲' : '▼'}
-                                  </span>
+                                  <div className="flex items-center justify-center gap-2">
+                                    <span className={`px-3 py-1.5 rounded-xl text-[8px] font-medium uppercase tracking-widest border ${r.estado === 'Abierta' ? 'bg-indigo-50 text-indigo-600 border-indigo-100 shadow-sm' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                                      {r.estado} {expandedCajaRow === r.id ? '▲' : '▼'}
+                                    </span>
+                                    {r.estado === 'Cerrada' && (
+                                      <button 
+                                        onClick={(e) => handleImprimirCaja(r, e)}
+                                        className="text-lg hover:scale-110 transition-transform active:scale-95 bg-white shadow-sm border border-slate-200 rounded-lg p-1.5 hover:border-indigo-200 hover:bg-indigo-50"
+                                        title="Re-imprimir Ticket de Cierre"
+                                      >
+                                        🖨️
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
 
@@ -911,7 +1021,7 @@ function Reportes() {
                                         <h4 className="text-[10px] font-medium text-white uppercase tracking-widest">Movimientos de Caja Manuales</h4>
                                         <span className="text-[9px] text-slate-400 font-normal uppercase italic">Detalle Auditado</span>
                                       </div>
-                                      
+
                                       {loadingMovs ? (
                                         <div className="p-10 text-center"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
                                       ) : movimientosDetalle.length === 0 ? (
@@ -962,6 +1072,206 @@ function Reportes() {
           )}
         </div>
       )}
+
+      {activeTab === "financiero" && (
+        <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+            <div>
+              <h2 className="text-3xl font-medium text-slate-900 tracking-tighter uppercase italic">Panel Financiero</h2>
+              <p className="text-slate-500 text-sm font-medium uppercase tracking-widest mt-1">Centro de mando y salud económica de la empresa</p>
+            </div>
+            
+            <div className="flex flex-wrap items-end gap-3 no-print">
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Desde</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Hasta</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-6 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-medium focus:bg-white outline-none transition-all shadow-inner"
+                />
+              </div>
+
+              <button onClick={() => fetchFinanciero()} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-medium text-[11px] uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center gap-2 italic active:scale-95 shadow-xl shadow-indigo-100">
+                🔄 Actualizar
+              </button>
+            </div>
+          </div>
+
+          {loadingFinanciero || !dataFinanciera ? (
+            <div className="flex flex-col items-center justify-center py-32 gap-4">
+              <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.3em] text-slate-400">Calculando balance financiero...</p>
+            </div>
+          ) : (
+            <div className="space-y-12">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500">
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-emerald-500 mb-2 block">Caja Actual</span>
+                  <div className="text-3xl text-emerald-600 tracking-tighter truncate">{formatCOP(dataFinanciera.cajaActual)}</div>
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] uppercase italic">Disponible Líquido</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500">
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-indigo-500 mb-2 block">Ventas del Día</span>
+                  <div className="text-3xl text-indigo-600 tracking-tighter truncate">{formatCOP(dataFinanciera.ventasDia)}</div>
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] uppercase italic">Facturado Hoy</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500">
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-amber-500 mb-2 block">Cuentas por Cobrar (CxC)</span>
+                  <div className="text-3xl text-amber-600 tracking-tighter truncate">{formatCOP(dataFinanciera.cxc.total)}</div>
+                  <div className="mt-4 flex flex-col gap-1">
+                    <span className="text-[10px] text-rose-500 font-medium bg-rose-50 px-2 py-1 rounded-lg w-fit">Vencidas: {formatCOP(dataFinanciera.cxc.vencidas)}</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500">
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-rose-500 mb-2 block">Cuentas por Pagar (CxP)</span>
+                  <div className="text-3xl text-rose-600 tracking-tighter truncate">{formatCOP(dataFinanciera.cxp.total)}</div>
+                  <div className="mt-4 flex flex-col gap-1">
+                    <span className="text-[10px] text-rose-500 font-medium bg-rose-50 px-2 py-1 rounded-lg w-fit">Vencidas: {formatCOP(dataFinanciera.cxp.vencidas)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500">
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-teal-500 mb-2 block">Total Compras (Rango Seleccionado)</span>
+                  <div className="text-3xl text-teal-600 tracking-tighter truncate">{formatCOP(dataFinanciera.comprasRango)}</div>
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="px-2 py-1 bg-teal-50 text-teal-600 rounded-lg text-[10px] uppercase italic">Gastos en Mercancía</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500">
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-fuchsia-500 mb-2 block">Total Pagos a Empleados (Rango Seleccionado)</span>
+                  <div className="text-3xl text-fuchsia-600 tracking-tighter truncate">{formatCOP(dataFinanciera.pagosEmpleadosRango)}</div>
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="px-2 py-1 bg-fuchsia-50 text-fuchsia-600 rounded-lg text-[10px] uppercase italic">Nómina y Comisiones</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-shadow duration-500 relative overflow-hidden flex flex-col justify-center">
+                  <div className="relative z-10">
+                    <span className="text-[12px] uppercase tracking-[0.3em] text-slate-500 mb-2 block">Balance General Parcial</span>
+                    <div className="text-5xl text-slate-900 tracking-tighter font-medium">
+                      {formatCOP(dataFinanciera.cajaActual + dataFinanciera.cxc.total - dataFinanciera.cxp.total - dataFinanciera.salidasManuales)}
+                    </div>
+                    <div className="mt-4 text-xs text-slate-400 italic">
+                      Fórmula: (Caja + CxC) - (CxP + Salidas/Gastos)
+                    </div>
+                  </div>
+                  <div className="absolute right-8 top-1/2 -translate-y-1/2 text-8xl opacity-[0.03] select-none">⚖️</div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-shadow duration-500 relative overflow-hidden flex flex-col justify-center">
+                  <div className="relative z-10">
+                    <span className="text-[12px] uppercase tracking-[0.3em] text-slate-500 mb-2 block">Entradas y Salidas Manuales</span>
+                    <div className="flex flex-col gap-3 mt-4">
+                      <div className="flex justify-between items-center bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100">
+                        <span className="text-[10px] text-emerald-600 font-medium uppercase tracking-widest">Ingresos (+)</span>
+                        <span className="text-lg text-emerald-700 font-bold">{formatCOP(dataFinanciera.entradasManuales)}</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-rose-50 px-4 py-3 rounded-2xl border border-rose-100">
+                        <span className="text-[10px] text-rose-600 font-medium uppercase tracking-widest">Gastos / Salidas (-)</span>
+                        <span className="text-lg text-rose-700 font-bold">{formatCOP(dataFinanciera.salidasManuales)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chart for summary would be ideally an evolution chart, but without historical data array, we represent total values as summary. */}
+              <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-shadow duration-500">
+                  <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-xl text-slate-900 tracking-tight flex items-center gap-2">
+                      <span className="w-2 h-6 bg-indigo-500 rounded-full"></span> Resumen de Valores Contables
+                    </h3>
+                  </div>
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={[
+                            { name: 'Caja Actual', valor: dataFinanciera.cajaActual, fill: '#10b981' },
+                            { name: 'Cx Cobrar', valor: dataFinanciera.cxc.total, fill: '#f59e0b' },
+                            { name: 'Cx Pagar', valor: dataFinanciera.cxp.total, fill: '#ef4444' },
+                            { name: 'Gastos', valor: dataFinanciera.salidasManuales, fill: '#6366f1' }
+                          ]}
+                          layout="vertical"
+                        >
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                          <XAxis type="number" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="name" tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} width={100} />
+                          <RechartsTooltip 
+                            cursor={{ fill: '#f8fafc' }} 
+                            formatter={(value: any) => [formatCOP(value), "Total"]}
+                          />
+                          <Bar dataKey="valor" radius={[0, 12, 12, 0]} barSize={30}>
+                            {
+                              [
+                                { name: 'Caja Actual', valor: dataFinanciera.cajaActual, fill: '#10b981' },
+                                { name: 'Cx Cobrar', valor: dataFinanciera.cxc.total, fill: '#f59e0b' },
+                                { name: 'Cx Pagar', valor: dataFinanciera.cxp.total, fill: '#ef4444' },
+                                { name: 'Gastos', valor: dataFinanciera.salidasManuales, fill: '#6366f1' }
+                              ].map((entry: any, index: number) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                              ))
+                            }
+                          </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+              </div>
+
+              {(dataFinanciera.cxc.vencidas > 0 || dataFinanciera.cxp.vencidas > 0) && (
+                <div className="bg-rose-50 p-6 rounded-[32px] border border-rose-100 flex items-center gap-4 animate-in slide-in-from-bottom-4 shadow-sm">
+                  <div className="text-3xl bg-white w-12 h-12 rounded-full flex items-center justify-center shadow-sm">⚠️</div>
+                  <div>
+                    <h4 className="text-rose-800 font-bold uppercase tracking-widest text-[11px] mb-1">Alertas Financieras Críticas</h4>
+                    <p className="text-rose-600 text-sm">
+                      {dataFinanciera.cxc.vencidas > 0 && <span>Existen <strong>{formatCOP(dataFinanciera.cxc.vencidas)}</strong> en cuentas por cobrar vencidas. </span>}
+                      {dataFinanciera.cxp.vencidas > 0 && <span>Tienes deudas por <strong>{formatCOP(dataFinanciera.cxp.vencidas)}</strong> con plazos límite superados.</span>}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Hidden Print Container */}
+      <div className="hidden">
+         {cierreDataPrint && (
+           <PrintReceipt
+             ref={printCajaRef}
+             empresa={empresaData}
+             isCierreCaja={true}
+             cierreData={cierreDataPrint}
+             items={[]}
+             total={0}
+             numero={0}
+             fecha={new Date().toISOString()}
+             cliente=""
+           />
+         )}
+      </div>
     </div>
   );
 }

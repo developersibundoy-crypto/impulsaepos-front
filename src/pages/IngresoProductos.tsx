@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import { Proveedor, Borrador, ProductoIngresado } from "../types";
+import { QuickProveedorModal } from "../components/QuickProveedorModal";
 
 interface FormDataState {
   referencia: string;
@@ -35,6 +36,7 @@ function IngresoProductos() {
   });
 
   const [proveedor, setProveedor] = useState("");
+  const [showQuickProveedorModal, setShowQuickProveedorModal] = useState(false);
   const [numeroFactura, setNumeroFactura] = useState("");
   const [productosIngresados, setProductosIngresados] = useState<ProductoIngresado[]>([]);
   const [proveedoresDB, setProveedoresDB] = useState<Proveedor[]>([]);
@@ -53,6 +55,9 @@ function IngresoProductos() {
   const [isSavingBatch, setIsSavingBatch] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [mensajeEstado, setMensajeEstado] = useState("");
+  const [estadoPago, setEstadoPago] = useState<'Pagada' | 'Pendiente'>('Pagada');
+  const [archivoFactura, setArchivoFactura] = useState<string | null>(null);
+  const [nombreArchivo, setNombreArchivo] = useState<string>("");
   const lastSearchedRef = React.useRef("");
 
 
@@ -148,6 +153,21 @@ function IngresoProductos() {
       buscarProductoPorReferencia(formData.referencia.trim());
     } else if (formData.referencia.trim() === '') {
       setMensajeEstado("");
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setNombreArchivo(file.name);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setArchivoFactura(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setArchivoFactura(null);
+      setNombreArchivo("");
     }
   };
 
@@ -272,7 +292,7 @@ function IngresoProductos() {
     if (!formData.nombre || !categoriaFinal || formData.precio_compra === "") {
       return alert("Datos incompletos.");
     }
-    const parsedCantidad = formData.es_servicio ? 0 : (parseInt(String(formData.cantidad), 10) || 0);
+    const parsedCantidad = formData.es_servicio ? 1 : (parseInt(String(formData.cantidad), 10) || 0);
     const parsedPrecioCompra = parseFloat(String(formData.precio_compra)) || 0;
     const parsedPrecioVenta = Math.round(parseFloat(String(formData.precio_venta)) || 0);
     const parsedIva = parseFloat(String(formData.iva_porcentaje)) || 0;
@@ -325,10 +345,12 @@ function IngresoProductos() {
       });
       setEditIndex(null);
     } else {
-      const existingIndex = productosIngresados.findIndex(p =>
-        (p.referencia && p.referencia === nuevoProducto.referencia) ||
-        (!p.referencia && p.nombre === nuevoProducto.nombre)
-      );
+      const existingIndex = productosIngresados.findIndex(p => {
+        const isSameProduct = (p.referencia && p.referencia === nuevoProducto.referencia) ||
+                              (!p.referencia && p.nombre === nuevoProducto.nombre);
+        const isSamePrice = Number(p.precio_compra) === Number(nuevoProducto.precio_compra);
+        return isSameProduct && isSamePrice;
+      });
 
       if (existingIndex !== -1) {
         // Actualización inmutable: fusionamos el nuevo registro con el existente sumando cantidades
@@ -473,7 +495,10 @@ function IngresoProductos() {
         numero_factura: numeroFactura,
         total: granTotal,
         productos: itemsFinales,
-        solo_registro: true
+        solo_registro: true,
+        es_credito: estadoPago === 'Pendiente',
+        monto_abonado: 0,
+        archivo_factura: archivoFactura
       });
 
       alert("✅ Factura completada. Proceso cerrado.");
@@ -522,6 +547,8 @@ function IngresoProductos() {
     setProveedor("");
     setNumeroFactura("");
     setCurrentDraftId(null);
+    setArchivoFactura(null);
+    setNombreArchivo("");
     lastSearchedRef.current = "";
     setFormData({
       referencia: "",
@@ -627,24 +654,34 @@ function IngresoProductos() {
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm space-y-4">
 
           {/* Step 1: Provider Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-slate-50/50 rounded-xl border border-slate-100">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-slate-50/50 rounded-xl border border-slate-100">
             <div className="space-y-1.5">
               <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Empresa Proveedora</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30 text-xs">🏢</span>
-                <input
-                  list="lista-proveedores-sum"
-                  type="text"
-                  value={proveedor}
-                  onChange={e => setProveedor(e.target.value)}
-                  placeholder="Nombre del proveedor..."
-                  className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all uppercase text-xs"
-                />
-                <datalist id="lista-proveedores-sum">
-                  {proveedoresDB.map(p => (
-                    <option key={p.id} value={p.nombre_comercial}>{p.nit ? `NIT: ${p.nit}` : ''}</option>
-                  ))}
-                </datalist>
+              <div className="flex gap-2 relative">
+                <div className="relative flex-1">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 opacity-30 text-xs">🏢</span>
+                  <input
+                    list="lista-proveedores-sum"
+                    type="text"
+                    value={proveedor}
+                    onChange={e => setProveedor(e.target.value)}
+                    placeholder="Nombre del proveedor..."
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all uppercase text-xs"
+                  />
+                  <datalist id="lista-proveedores-sum">
+                    {proveedoresDB.map(p => (
+                      <option key={p.id} value={p.nombre_comercial}>{p.nit ? `NIT: ${p.nit}` : ''}</option>
+                    ))}
+                  </datalist>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickProveedorModal(true)}
+                  title="Crear nuevo proveedor"
+                  className="w-[38px] h-[38px] shrink-0 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl flex items-center justify-center transition-all border border-indigo-100 font-bold"
+                >
+                  +
+                </button>
               </div>
             </div>
             <div className="space-y-1.5">
@@ -658,6 +695,48 @@ function IngresoProductos() {
                   placeholder="Referencia de factura..."
                   className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl font-black text-slate-900 outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all uppercase text-xs"
                 />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 flex justify-between">
+                <span>Estado de Pago</span>
+                {nombreArchivo && <span className="text-emerald-500 truncate max-w-[80px]" title={nombreArchivo}>{nombreArchivo}</span>}
+              </label>
+              <div className="flex gap-2 items-center">
+                <div className="flex bg-white p-1 rounded-xl border border-slate-200 h-[38px] flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setEstadoPago('Pagada')}
+                    className={`flex-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${estadoPago === 'Pagada' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    Pagada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEstadoPago('Pendiente')}
+                    className={`flex-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${estadoPago === 'Pendiente' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    Pendiente
+                  </button>
+                </div>
+                {estadoPago === 'Pagada' && (
+                  <div className="relative h-[38px] w-[38px] shrink-0 animate-in fade-in zoom-in duration-300">
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      id="upload-factura"
+                    />
+                    <label 
+                      htmlFor="upload-factura"
+                      className={`w-full h-full flex items-center justify-center bg-white border ${archivoFactura ? 'border-emerald-400 text-emerald-600 shadow-sm' : 'border-slate-200 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'} rounded-xl cursor-pointer transition-all`}
+                      title={nombreArchivo || "Cargar Factura (Opcional)"}
+                    >
+                      <span className="text-sm">{archivoFactura ? '✅' : '📎'}</span>
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1072,14 +1151,18 @@ function IngresoProductos() {
 
         {/* Action Totals Card */}
         <div className="p-4 bg-white border-t border-slate-100 space-y-3 relative shadow-[0_-10px_30px_-15px_rgba(0,0,0,0.1)]">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100">
-              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block mb-0.5">Inversión Costo</span>
-              <h3 className="text-base font-black text-indigo-700 leading-none">{formatCOP(valorTotalIngresados)}</h3>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="p-2.5 bg-indigo-50/50 rounded-xl border border-indigo-100">
+              <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest block mb-0.5">Inversión Costo</span>
+              <h3 className="text-sm font-black text-indigo-700 leading-none">{formatCOP(valorTotalIngresados)}</h3>
             </div>
-            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-right">
-              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest block mb-0.5">Venta Estimada</span>
-              <h3 className="text-base font-black text-emerald-700 leading-none">{formatCOP(valorVentaTotal)}</h3>
+            <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-100 text-center">
+              <span className="text-[8px] font-black text-emerald-600 uppercase tracking-widest block mb-0.5">Venta Estimada</span>
+              <h3 className="text-sm font-black text-emerald-700 leading-none">{formatCOP(valorVentaTotal)}</h3>
+            </div>
+            <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-100 text-right">
+              <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest block mb-0.5">Utilidad Estimada</span>
+              <h3 className="text-sm font-black text-amber-700 leading-none">{formatCOP(valorVentaTotal - valorTotalIngresados)}</h3>
             </div>
           </div>
 
@@ -1123,6 +1206,15 @@ function IngresoProductos() {
           </div>
         </div>
       </div>
+      <QuickProveedorModal
+        isOpen={showQuickProveedorModal}
+        onClose={() => setShowQuickProveedorModal(false)}
+        onProveedorCreated={(p) => {
+          setProveedoresDB(prev => [...prev, p]);
+          setProveedor(p.nombre_comercial);
+          setShowQuickProveedorModal(false);
+        }}
+      />
     </div>
   );
 }

@@ -36,6 +36,7 @@ export default function Separados() {
   const [newClienteId, setNewClienteId] = useState("");
   const [clienteSearch, setClienteSearch] = useState("");
   const [cart, setCart] = useState<any[]>([]);
+  const [originalCart, setOriginalCart] = useState<any[]>([]);
   const [prodSearch, setProdSearch] = useState("");
   const [initialPayment, setInitialPayment] = useState("");
 
@@ -160,6 +161,7 @@ export default function Separados() {
 
       setShowNewModal(false);
       setCart([]);
+      setOriginalCart([]);
       setNewClienteId("");
       setInitialPayment("");
       setPagoRecibido("");
@@ -178,17 +180,26 @@ export default function Separados() {
     setNewClienteId(sep.cliente_id.toString());
     const items = typeof sep.detalles_json === 'string' ? JSON.parse(sep.detalles_json) : sep.detalles_json;
     setCart(items || []);
+    setOriginalCart(items || []);
     setInitialPayment("");
     setShowNewModal(true);
     setViewSeparado(null);
   };
 
+  const getMaxAvailable = (prodId: number, currentStock: number) => {
+    if (!isEditing) return currentStock;
+    const originalItem = originalCart.find((p: any) => p.id === prodId);
+    const oldQty = originalItem ? (originalItem.qty || originalItem.cantidad || 0) : 0;
+    return currentStock + oldQty;
+  };
+
   const addProdToCart = (prod: Producto) => {
     const exist = cart.find(x => x.id === prod.id);
     const currentQty = exist ? exist.qty : 0;
+    const maxAvailable = getMaxAvailable(prod.id, prod.cantidad);
 
-    if (currentQty + 1 > prod.cantidad) {
-      alert(`⚠️ PRODUCTO AGOTADO. Solo quedan ${prod.cantidad} unidades disponibles.`);
+    if (currentQty + 1 > maxAvailable) {
+      alert(`⚠️ PRODUCTO AGOTADO. Solo quedan ${maxAvailable} unidades disponibles (incluyendo reservadas).`);
       return;
     }
 
@@ -244,13 +255,14 @@ export default function Separados() {
   const updateCartQty = (id: number, delta: number) => {
     const prodRef = productos.find(p => p.id === id);
     if (!prodRef) return;
+    const maxAvailable = getMaxAvailable(id, prodRef.cantidad);
 
     setCart(cart.map(x => {
       if (x.id === id) {
         const newQty = x.qty + delta;
 
-        if (newQty > prodRef.cantidad) {
-          alert(`⚠️ STOCK MÁXIMO ALCANZADO. Solo hay ${prodRef.cantidad} unidades.`);
+        if (newQty > maxAvailable) {
+          alert(`⚠️ STOCK MÁXIMO ALCANZADO. Solo hay ${maxAvailable} unidades (incluyendo reservadas).`);
           return x;
         }
 
@@ -263,13 +275,14 @@ export default function Separados() {
   const setManualQty = (id: number, qtyStr: string) => {
     const prodRef = productos.find(p => p.id === id);
     if (!prodRef) return;
+    const maxAvailable = getMaxAvailable(id, prodRef.cantidad);
 
     const qty = parseInt(qtyStr) || 1;
     const finalQty = Math.max(1, qty);
 
-    if (finalQty > prodRef.cantidad) {
-      alert(`⚠️ STOCK INSUFICIENTE. Máximo disponible: ${prodRef.cantidad}`);
-      setCart(cart.map(x => x.id === id ? { ...x, qty: prodRef.cantidad } : x));
+    if (finalQty > maxAvailable) {
+      alert(`⚠️ STOCK INSUFICIENTE. Máximo disponible: ${maxAvailable} (incluyendo reservadas)`);
+      setCart(cart.map(x => x.id === id ? { ...x, qty: maxAvailable } : x));
       return;
     }
 
@@ -425,6 +438,7 @@ export default function Separados() {
               setIsEditing(false);
               setEditingId(null);
               setCart([]);
+              setOriginalCart([]);
               setNewClienteId("");
               setShowNewModal(true);
             }}

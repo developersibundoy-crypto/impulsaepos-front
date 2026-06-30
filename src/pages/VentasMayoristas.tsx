@@ -7,6 +7,7 @@ import PrintReceipt from "../components/PrintReceipt";
 import NotificationPanel from "../components/NotificationPanel";
 import { useCaja } from "../components/CajaContext";
 import { socket, joinEmpresaRoom } from "../utils/socket";
+import { QuickCustomerModal } from "../components/QuickCustomerModal";
 import { hasAccess } from "../utils/auth";
 
 function VentasMayoristas() {
@@ -724,11 +725,31 @@ function VentasMayoristas() {
                     key={p.id}
                     onClick={() => agregarAlCarrito(p)}
                     disabled={isOutOfStock}
-                    className={`group relative flex flex-col p-5 bg-white rounded-[32px] border border-slate-200 text-left transition-all duration-500 hover:shadow-2xl hover:shadow-sky-100 hover:border-sky-400 disabled:opacity-40 select-none overflow-hidden ${isOutOfStock ? 'bg-slate-50' : ''}`}
+                    className={`group relative flex flex-col p-5 bg-white rounded-[32px] border border-slate-200 text-left transition-all duration-500 hover:shadow-2xl hover:shadow-sky-100 hover:border-sky-400 disabled:opacity-40 select-none ${isOutOfStock ? 'bg-slate-50' : ''}`}
                   >
+                    <div className="absolute inset-0 overflow-hidden rounded-[32px] pointer-events-none">
+                      <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-sky-600 rounded-full flex items-center justify-center text-white scale-0 group-hover:scale-100 transition-all duration-500">
+                        <span className="mb-1 mr-1 text-2xl">+</span>
+                      </div>
+                    </div>
                     <div className="mb-4">
-                      <h3 className="text-[12px] text-slate-900 font-medium uppercase line-clamp-2 leading-tight min-h-[2.4rem] tracking-tight group-hover:text-sky-600 transition-colors">{p.nombre}</h3>
-                      <p className="text-[10px] text-slate-900 font-bold mt-2 uppercase italic tracking-tighter">{p.referencia || 'SIN REFERENCIA'}</p>
+                      <div className="relative group/tooltip w-full z-20">
+                        <h3 className="text-[12px] text-slate-900 font-medium uppercase line-clamp-2 leading-tight min-h-[2.4rem] tracking-tight group-hover:text-sky-600 transition-colors cursor-help">{p.nombre}</h3>
+                        <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[220px] bg-slate-800 text-white text-[10px] p-2.5 rounded-xl shadow-2xl pointer-events-none z-[999]">
+                          <span className="block whitespace-normal break-words leading-snug">{p.nombre}</span>
+                          {p.descripcion && <span className="block whitespace-normal break-words leading-snug mt-1 font-normal text-slate-300">{p.descripcion}</span>}
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-[6px] border-transparent border-t-slate-800"></div>
+                        </div>
+                      </div>
+                      <div className="relative group/tooltip w-fit max-w-full z-20">
+                        <p className="text-[10px] text-slate-900 font-bold mt-2 uppercase italic tracking-tighter truncate cursor-help">{p.referencia || 'SIN REFERENCIA'}</p>
+                        {p.referencia && (
+                          <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-0 mb-1 w-max max-w-[200px] bg-slate-800 text-white text-[10px] p-2 rounded-lg shadow-xl pointer-events-none z-[999]">
+                            <span className="block whitespace-normal break-words leading-snug">{p.referencia}</span>
+                            <div className="absolute top-full left-4 -mt-1 border-[5px] border-transparent border-t-slate-800"></div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-auto flex flex-col gap-3">
                       <div className="text-xl font-medium text-sky-600 italic tracking-tighter">{formatCOP(p.precio_venta)}</div>
@@ -736,10 +757,6 @@ function VentasMayoristas() {
                         available < 10 && !p.es_servicio ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
                         {p.es_servicio ? '⚡ SERVICIO' : `🚛 STOCK: ${Math.max(0, available)}`}
                       </div>
-                    </div>
-                    {/* Add effect */}
-                    <div className="absolute -bottom-4 -right-4 w-12 h-12 bg-sky-600 rounded-full flex items-center justify-center text-white scale-0 group-hover:scale-100 transition-all duration-500">
-                      <span className="mb-1 mr-1 text-2xl">+</span>
                     </div>
                   </button>
                 );
@@ -884,19 +901,33 @@ function VentasMayoristas() {
                   className="group flex items-center gap-2 p-1.5 bg-white border border-slate-100 rounded-xl hover:border-indigo-100 transition-all outline-none"
                 >
                   {/* Producto e Info */}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-[10px] text-slate-900 uppercase truncate font-bold leading-tight">
-                      {item.nombre}
-                    </h4>
-                    <span className="text-[7px] text-slate-400 uppercase font-normal block mt-0.5">
-                      REF: {item.referencia || 'SIN REF'}
-                    </span>
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="relative group/tooltip inline-block max-w-full">
+                      <h4 className="text-[10px] text-slate-900 uppercase truncate font-bold leading-tight cursor-help">
+                        {item.nombre}
+                      </h4>
+                      <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-0 mb-2 w-max max-w-[200px] bg-slate-800 text-white text-[10px] p-2.5 rounded-xl shadow-2xl pointer-events-none z-[999]">
+                        <span className="block whitespace-normal break-words leading-snug">{item.nombre}</span>
+                        <div className="absolute top-full left-4 -mt-1 border-[6px] border-transparent border-t-slate-800"></div>
+                      </div>
+                    </div>
+                    <div className="relative group/tooltip inline-block max-w-full block mt-0.5">
+                      <span className="text-[7px] text-slate-400 uppercase font-normal block truncate cursor-help">
+                        REF: {item.referencia || 'SIN REF'}
+                      </span>
+                      {item.referencia && (
+                        <div className="absolute opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 bottom-full left-0 mb-1 w-max max-w-[200px] bg-slate-800 text-white text-[10px] p-2 rounded-lg shadow-xl pointer-events-none z-[999]">
+                          <span className="block whitespace-normal break-words leading-snug">{item.referencia}</span>
+                          <div className="absolute top-full left-2 -mt-1 border-[5px] border-transparent border-t-slate-800"></div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Cantidad Ultra Compacta */}
                   <div className="flex items-center bg-slate-50/50 rounded-lg p-0.5 gap-0.5 border border-slate-100 shrink-0">
-                    <button 
-                      onClick={() => removerDelCarrito(item)} 
+                    <button
+                      onClick={() => removerDelCarrito(item)}
                       className="w-5 h-5 flex items-center justify-center text-[10px] text-slate-400 bg-white hover:text-rose-600 rounded transition-colors font-normal"
                     >
                       －
@@ -907,8 +938,8 @@ function VentasMayoristas() {
                       onChange={(e) => actualizarCantidad(item.id, e.target.value)}
                       className="w-7 text-center text-[10px] font-normal bg-transparent outline-none text-slate-700"
                     />
-                    <button 
-                      onClick={() => agregarAlCarrito(item)} 
+                    <button
+                      onClick={() => agregarAlCarrito(item)}
                       className="w-5 h-5 flex items-center justify-center text-[10px] text-slate-400 bg-white hover:text-indigo-600 rounded transition-colors font-normal"
                     >
                       ＋
@@ -936,8 +967,8 @@ function VentasMayoristas() {
                   </div>
 
                   {/* Eliminar */}
-                  <button 
-                    onClick={() => eliminarDelCarrito(item)} 
+                  <button
+                    onClick={() => eliminarDelCarrito(item)}
                     className="w-5 h-5 flex items-center justify-center text-slate-200 hover:text-rose-400 transition-colors text-base font-light shrink-0"
                   >
                     ×
@@ -1307,128 +1338,15 @@ function VentasMayoristas() {
         )}
       </div>
       {/* Quick Customer Registration Modal */}
-      {showQuickCustomerModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowQuickCustomerModal(false)}></div>
-          <div className="relative w-full max-w-md bg-white rounded-[32px] shadow-3xl p-8 animate-in zoom-in duration-300 border border-slate-100">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl text-slate-900 font-medium uppercase tracking-tighter italic">Nuevo Distribuidor</h2>
-              <button onClick={() => setShowQuickCustomerModal(false)} className="w-8 h-8 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center hover:text-rose-500 transition-all font-semibold">×</button>
-            </div>
-
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              if (!newCustomer.nombre) return alert("El nombre es obligatorio");
-              setIsCreatingCustomer(true);
-              try {
-                const res = await API.post("/clientes", newCustomer);
-                const created = res.data;
-                setClientes(prev => [...prev, created]);
-                setClienteId(created.id.toString());
-                setClienteSearch(`${created.nombre} ${created.documento ? `(${created.documento})` : ''}`);
-                setShowQuickCustomerModal(false);
-                setNewCustomer({ nombre: "", documento: "", tipo_documento: "13", dv: "", telefono: "", correo: "" });
-              } catch (err: any) {
-                alert("Error creando distribuidor: " + (err.response?.data?.error || err.message));
-              } finally {
-                setIsCreatingCustomer(false);
-              }
-            }} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[9px] text-slate-400 font-medium uppercase tracking-widest ml-1">Razón Social / Nombre</label>
-                <input
-                  type="text"
-                  value={newCustomer.nombre}
-                  onChange={e => setNewCustomer({ ...newCustomer, nombre: e.target.value.toUpperCase() })}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                  placeholder="Ej: DISTRIBUIDORA ABC SAS"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[9px] text-slate-400 font-medium uppercase tracking-widest ml-1">Tipo Documento</label>
-                  <select
-                    value={newCustomer.tipo_documento}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setNewCustomer({
-                        ...newCustomer,
-                        tipo_documento: val,
-                        dv: val === "31" ? calcularDV(newCustomer.documento) : ""
-                      });
-                    }}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-[10px]"
-                  >
-                    <option value="13">Cédula de Ciudadanía</option>
-                    <option value="31">NIT</option>
-                    <option value="11">Registro Civil</option>
-                    <option value="12">Tarjeta de Identidad</option>
-                    <option value="22">Cédula de Extranjería</option>
-                    <option value="41">Pasaporte</option>
-                  </select>
-                </div>
-                <div className="flex gap-2">
-                  <div className="space-y-1.5 flex-1">
-                    <label className="text-[9px] text-slate-400 font-medium uppercase tracking-widest ml-1">Documento</label>
-                    <input
-                      type="text"
-                      value={newCustomer.documento}
-                      onChange={e => {
-                        const val = e.target.value.replace(/\D/g, '');
-                        setNewCustomer({
-                          ...newCustomer,
-                          documento: val,
-                          dv: newCustomer.tipo_documento === "31" ? calcularDV(val) : ""
-                        });
-                      }}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                      placeholder="Nro identificación"
-                    />
-                  </div>
-                  {newCustomer.tipo_documento === "31" && (
-                    <div className="space-y-1.5 w-10 shrink-0">
-                      <label className="text-[9px] text-indigo-500 font-medium uppercase tracking-widest text-center block">DV</label>
-                      <div className="w-full px-1 py-3 bg-indigo-50 border border-indigo-200 rounded-2xl text-center font-medium text-indigo-700">{newCustomer.dv}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[9px] text-slate-400 font-medium uppercase tracking-widest ml-1">WhatsApp</label>
-                  <input
-                    type="text"
-                    value={newCustomer.telefono}
-                    onChange={e => setNewCustomer({ ...newCustomer, telefono: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[9px] text-slate-400 font-medium uppercase tracking-widest ml-1">Email</label>
-                  <input
-                    type="email"
-                    value={newCustomer.correo}
-                    onChange={e => setNewCustomer({ ...newCustomer, correo: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white outline-none focus:ring-4 focus:ring-indigo-50 transition-all font-semibold text-[10px]"
-                    placeholder="compras@proveedor.com"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={isCreatingCustomer}
-                className="w-full py-4 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-1 transition-all uppercase tracking-widest text-[10px] font-medium mt-4"
-              >
-                {isCreatingCustomer ? "⏳ Creando..." : "✅ Registrar Distribuidor"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
+      <QuickCustomerModal
+        isOpen={showQuickCustomerModal}
+        onClose={() => setShowQuickCustomerModal(false)}
+        onCustomerCreated={(c) => {
+          setClientes(prev => [...prev, c]);
+          setClienteId(c.id.toString());
+          setClienteSearch(`${c.nombre || c.razon_social} ${c.documento ? `(${c.documento})` : ''}`);
+        }}
+      />
       {/* Modal para Crear Separado sin salir de ventas */}
       {showCreateSeparadoModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
