@@ -274,7 +274,7 @@ const CrearDeudaCxPModal = ({ isOpen, onClose, proveedores, onGuardar }: any) =>
                 isOpen={quickModalOpen}
                 onClose={() => setQuickModalOpen(false)}
                 onProveedorCreated={(p: any) => {
-                    setProveedor(p.nombre_comercial);
+                    setProveedorSearch(p.nombre_comercial);
                     // Also trigger a refresh of the providers list indirectly, 
                     // though for this modal just setting the text is enough to save.
                     setQuickModalOpen(false);
