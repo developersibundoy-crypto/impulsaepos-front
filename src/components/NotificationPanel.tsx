@@ -58,7 +58,7 @@ const NotificationPanel = () => {
               label: 'SISTEMA VENCIDO',
               message: `La suscripción del sistema venció el ${vDate.toLocaleDateString()}. Renueva para evitar bloqueos.`
             });
-          } else if (diffDays <= 10) {
+          } else if (diffDays <= 3) {
             newAlerts.push({
               type: 'warning',
               icon: '⚠️',
@@ -82,7 +82,7 @@ const NotificationPanel = () => {
                   label: 'MORA EN PAGO',
                   message: `Separado #${s.id} de ${s.cliente_nombre} tiene mora de ${Math.abs(diffDays)} días.`
                 });
-              } else if (diffDays <= 10) {
+              } else if (diffDays <= 3) {
                 newAlerts.push({
                   type: 'warning',
                   icon: '🗓️',
