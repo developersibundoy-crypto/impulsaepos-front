@@ -537,7 +537,7 @@ function FacturacionElectronica() {
 
       {/* Cart side */}
       <div className="w-full lg:w-[450px] flex flex-col bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden relative">
-        
+
         {/* Vistas Simultáneas / Tabs */}
         <div className="p-5 bg-slate-100 border-b border-slate-200">
           <div className="flex items-center justify-between mb-3">
@@ -551,11 +551,10 @@ function FacturacionElectronica() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTabId(tab.id)}
-                className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border-2 whitespace-nowrap ${
-                  activeTabId === tab.id
+                className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border-2 whitespace-nowrap ${activeTabId === tab.id
                     ? "bg-blue-600 text-white border-blue-600 shadow-md scale-105 z-10"
                     : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"
-                }`}
+                  }`}
               >
                 Venta {idx + 1}
                 <span className={`w-2 h-2 rounded-full ${tab.carrito?.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`}></span>
@@ -678,7 +677,7 @@ function FacturacionElectronica() {
                   />
                   <button onClick={() => agregarAlCarrito(item)} className="w-6 h-6 flex items-center justify-center text-sm text-slate-400 bg-white hover:text-blue-600 rounded-md transition-all shadow-sm active:scale-90 select-none font-bold">＋</button>
                 </div>
-                
+
                 {/* Total Value */}
                 <div className="shrink-0 text-right min-w-[65px] ml-1">
                   <span className="text-[11px] font-black text-blue-700 block italic">{formatCOP(item.precio_venta * item.qty)}</span>

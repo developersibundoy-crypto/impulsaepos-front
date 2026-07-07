@@ -1182,7 +1182,7 @@ function Reportes() {
 
                 <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-shadow duration-500 relative overflow-hidden flex flex-col justify-center">
                   <div className="relative z-10">
-                    <span className="text-[12px] uppercase tracking-[0.3em] text-slate-500 mb-2 block">Entradas y Salidas Manuales</span>
+                    <span className="text-[12px] uppercase tracking-[0.3em] text-slate-500 mb-2 block">Entradas y Salidas Manuales <span className="text-[9px] text-slate-400 italic normal-case">(Rango Seleccionado)</span></span>
                     <div className="flex flex-col gap-3 mt-4">
                       <div className="flex justify-between items-center bg-emerald-50 px-4 py-3 rounded-2xl border border-emerald-100">
                         <span className="text-[10px] text-emerald-600 font-medium uppercase tracking-widest">Ingresos (+)</span>

@@ -104,6 +104,72 @@ function ConfiguracionEmpresa() {
       });
   };
 
+  // ─── Programa de Fidelización (Nueva Arquitectura Financiera) ────────────
+  interface PuntosFormState {
+    activo: boolean;
+    porcentaje_acumulacion: number;
+    modo_acumulacion: "porcentaje" | "cada_x";
+    puntos_por_cada: number;
+    monto_para_cada: number;
+    porcentaje_redencion_max: number;
+    vigencia_dias: number;
+    monto_minimo_acumular: number;
+    monto_minimo_redimir: number;
+    valor_punto: number;
+  }
+  const [puntosConfig, setPuntosConfig] = useState<PuntosFormState>({
+    activo: false,
+    porcentaje_acumulacion: 2,
+    modo_acumulacion: "porcentaje",
+    puntos_por_cada: 1,
+    monto_para_cada: 50,
+    porcentaje_redencion_max: 20,
+    vigencia_dias: 90,
+    monto_minimo_acumular: 100,
+    monto_minimo_redimir: 500,
+    valor_punto: 1,
+  });
+  const [loadingPuntosConfig, setLoadingPuntosConfig] = useState(true);
+  const [loadingPuntos, setLoadingPuntos] = useState(false);
+  const [puntosSuccess, setPuntosSuccess] = useState(false);
+
+  useEffect(() => {
+    API.get("/puntos/config")
+      .then(res => {
+        const d = res.data?.basica ?? res.data;
+        if (d) {
+          setPuntosConfig({
+            activo: d.activo ?? false,
+            porcentaje_acumulacion: d.porcentaje_acumulacion ?? 2,
+            modo_acumulacion: d.modo_acumulacion ?? "porcentaje",
+            puntos_por_cada: d.puntos_por_cada ?? 1,
+            monto_para_cada: d.monto_para_cada ?? 50,
+            porcentaje_redencion_max: d.porcentaje_redencion_max ?? 20,
+            vigencia_dias: d.vigencia_dias ?? 90,
+            monto_minimo_acumular: d.monto_minimo_acumular ?? 100,
+            monto_minimo_redimir: d.monto_minimo_redimir ?? 500,
+            valor_punto: d.valor_punto ?? 1,
+          });
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoadingPuntosConfig(false));
+  }, []);
+
+  const handlePuntosSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoadingPuntos(true);
+    API.put("/puntos/config", puntosConfig)
+      .then(() => {
+        setPuntosSuccess(true);
+        setTimeout(() => setPuntosSuccess(false), 3000);
+      })
+      .catch(err => {
+        alert("Error al guardar: " + (err.response?.data?.error || err.message));
+      })
+      .finally(() => setLoadingPuntos(false));
+  };
+
   return (
     <div className="max-w-[1200px] mx-auto animate-in fade-in duration-700 pb-20">
       
@@ -277,6 +343,121 @@ function ConfiguracionEmpresa() {
                         🔑 Actualizar Clave de Seguridad
                     </button>
                 </form>
+            </div>
+
+            {/* Programa de Fidelización - Puntos (Nueva Arquitectura Financiera) */}
+            <div className="bg-white p-10 rounded-[48px] border border-slate-200 shadow-sm space-y-10 animate-in slide-in-from-bottom-4 duration-1000">
+                <h3 className="text-xl font-medium text-slate-900 flex items-center gap-2">
+                    <span className="w-2 h-6 bg-amber-500 rounded-full"></span> Programa de Fidelización
+                </h3>
+
+                {loadingPuntosConfig ? (
+                    <div className="flex items-center justify-center py-10">
+                        <div className="w-8 h-8 border-4 border-amber-100 border-t-amber-600 rounded-full animate-spin"></div>
+                    </div>
+                ) : (
+                    <form onSubmit={handlePuntosSubmit} className="space-y-8">
+                        <div className="flex items-center justify-between p-6 bg-amber-50/50 rounded-3xl border border-amber-100">
+                            <div>
+                                <p className="text-sm font-medium text-slate-900">Estado del Programa</p>
+                                <p className="text-[10px] text-slate-500 mt-1">Sistema de puntos basado en margen de utilidad</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" checked={puntosConfig.activo} onChange={(e) => setPuntosConfig({ ...puntosConfig, activo: e.target.checked })} className="sr-only peer" />
+                                <div className="w-14 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-amber-100 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-600"></div>
+                            </label>
+                        </div>
+
+                        {/* Acumulación */}
+                        <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
+                            <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Regla de Acumulación</p>
+                            
+                            <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="modo_acum" checked={puntosConfig.modo_acumulacion === "porcentaje"} onChange={() => setPuntosConfig({ ...puntosConfig, modo_acumulacion: "porcentaje" })} className="accent-amber-600" />
+                                    <span className="text-sm">% del total de compra</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="modo_acum" checked={puntosConfig.modo_acumulacion === "cada_x"} onChange={() => setPuntosConfig({ ...puntosConfig, modo_acumulacion: "cada_x" })} className="accent-amber-600" />
+                                    <span className="text-sm">X puntos por cada $Y</span>
+                                </label>
+                            </div>
+
+                            {puntosConfig.modo_acumulacion === "porcentaje" ? (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">% de Acumulación</label>
+                                    <div className="relative">
+                                        <input type="number" step="0.01" min="0" max="100" value={puntosConfig.porcentaje_acumulacion} onChange={(e) => setPuntosConfig({ ...puntosConfig, porcentaje_acumulacion: parseFloat(e.target.value) || 0 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-amber-50 transition-all pr-12" />
+                                        <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">%</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 italic">Ej: 2% → compra de $100,000 → 2,000 puntos</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Puntos por cada</label>
+                                        <input type="number" min="1" value={puntosConfig.puntos_por_cada} onChange={(e) => setPuntosConfig({ ...puntosConfig, puntos_por_cada: parseInt(e.target.value) || 1 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-amber-50 transition-all" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">$ Monto para puntos</label>
+                                        <input type="number" min="1" value={puntosConfig.monto_para_cada} onChange={(e) => setPuntosConfig({ ...puntosConfig, monto_para_cada: parseInt(e.target.value) || 1 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-amber-50 transition-all" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Redención */}
+                        <div className="p-6 bg-emerald-50/50 rounded-3xl border border-emerald-100 space-y-6">
+                            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Regla de Redención</p>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">% Máximo de Redención</label>
+                                    <div className="relative">
+                                        <input type="number" step="0.1" min="0" max="100" value={puntosConfig.porcentaje_redencion_max} onChange={(e) => setPuntosConfig({ ...puntosConfig, porcentaje_redencion_max: parseFloat(e.target.value) || 0 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-emerald-50 transition-all pr-12" />
+                                        <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">%</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 italic">Ej: 20% → compra $100,000, máx 20,000 pts</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Valor por Punto ($)</label>
+                                    <div className="relative">
+                                        <input type="number" step="0.01" min="0.01" value={puntosConfig.valor_punto} onChange={(e) => setPuntosConfig({ ...puntosConfig, valor_punto: parseFloat(e.target.value) || 1 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-emerald-50 transition-all pl-12" />
+                                        <span className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">$</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Monto Mínimo para Redimir</label>
+                                    <input type="number" min="0" value={puntosConfig.monto_minimo_redimir} onChange={(e) => setPuntosConfig({ ...puntosConfig, monto_minimo_redimir: parseInt(e.target.value) || 0 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-emerald-50 transition-all" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Monto Mínimo para Acumular</label>
+                                    <input type="number" min="0" value={puntosConfig.monto_minimo_acumular} onChange={(e) => setPuntosConfig({ ...puntosConfig, monto_minimo_acumular: parseInt(e.target.value) || 0 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-emerald-50 transition-all" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Vigencia */}
+                        <div className="p-6 bg-violet-50/50 rounded-3xl border border-violet-100 space-y-4">
+                            <p className="text-xs font-semibold text-violet-700 uppercase tracking-wider">Vigencia de Puntos</p>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest">Días de Vigencia</label>
+                                <div className="relative">
+                                    <input type="number" min="1" value={puntosConfig.vigencia_dias} onChange={(e) => setPuntosConfig({ ...puntosConfig, vigencia_dias: parseInt(e.target.value) || 90 })} className="w-full px-6 py-4 bg-white border border-slate-200 rounded-2xl font-medium outline-none focus:ring-4 focus:ring-violet-50 transition-all pr-20" />
+                                    <span className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">días</span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 italic">Los puntos no usados al vencer se expirarán automáticamente (Breakage)</p>
+                            </div>
+                        </div>
+
+                        <button type="submit" disabled={loadingPuntos} className={`w-full py-4 rounded-[24px] font-medium transition-all uppercase tracking-widest text-[10px] italic border shadow-sm ${puntosSuccess ? 'bg-emerald-600 text-white border-emerald-200' : 'bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white border-amber-100'}`}>
+                            {loadingPuntos ? "Guardando..." : puntosSuccess ? "✅ Configuración Guardada" : "🎯 Guardar Configuración Financiera"}
+                        </button>
+                    </form>
+                )}
             </div>
         </div>
 

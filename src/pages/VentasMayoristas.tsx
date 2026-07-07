@@ -9,6 +9,8 @@ import { useCaja } from "../components/CajaContext";
 import { socket, joinEmpresaRoom } from "../utils/socket";
 import { QuickCustomerModal } from "../components/QuickCustomerModal";
 import { hasAccess } from "../utils/auth";
+import { usePuntos } from "../hooks/usePuntos";
+import { PuntosInfo } from "../types";
 
 function VentasMayoristas() {
   const navigate = useNavigate();
@@ -115,6 +117,17 @@ function VentasMayoristas() {
   const [metodoPagoAbono, setMetodoPagoAbono] = useState("Efectivo");
   const [isProcessingSeparado, setIsProcessingSeparado] = useState(false);
 
+  // ─── Sistema de Puntos (Arquitectura Financiera) ──────────────────────────
+  const { configPuntos, puntosCliente, loadingPuntos, refetchPuntos } = usePuntos(clienteId);
+  const [lastPuntosInfo, setLastPuntosInfo] = useState<{
+    puntosGanados: number;
+    puntosAcumulados: number;
+    meta: number;
+    puntosRedimidos?: number;
+    descuentoAplicado?: number;
+  } | null>(null);
+  const [puntosARedimir, setPuntosARedimir] = useState<number>(0);
+  const [showRedimirPuntos, setShowRedimirPuntos] = useState(false);
 
   // Pagination states
   const [page, setPage] = useState(1);
@@ -409,6 +422,9 @@ function VentasMayoristas() {
     setPagoCliente("");
     setPagoEfectivoMixto("");
     setPagoTransferenciaMixto("");
+    setLastPuntosInfo(null);
+    setPuntosARedimir(0);
+    setShowRedimirPuntos(false);
     setFacturaIdImpresion(null);
     setItemsParaRecibo([]);
     setTotalesRecibo(null);
@@ -435,10 +451,14 @@ function VentasMayoristas() {
       return alert("❌ Error: Una o más cantidades no son válidas.");
     }
     if (!cajeroId) return alert("❌ Seguridad: Selecciona al Responsable del Despacho.");
-    if (metodoPago === "Efectivo" && cashPaga < granTotal) {
+
+    const descuentoPuntos = (puntosARedimir || 0) * ((configPuntos?.valor_punto ?? 1));
+    const totalConDescuentoPuntos = Math.max(0, granTotal - descuentoPuntos);
+
+    if (metodoPago === "Efectivo" && cashPaga < totalConDescuentoPuntos) {
       return alert("Monto entregado insuficiente.");
     }
-    if (metodoPago === "Mixto" && sumMixto !== granTotal) {
+    if (metodoPago === "Mixto" && sumMixto !== totalConDescuentoPuntos) {
       return alert("El pago mixto debe sumar exactamente el total de la factura.");
     }
 
@@ -454,17 +474,17 @@ function VentasMayoristas() {
         items: discountedCart,
         metodoPago,
         efectivoEntregado: metodoPago === "Mixto" ? efMixto : (metodoPago === "Efectivo" ? cashPaga : 0),
-        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Tarjeta" ? granTotal : 0),
+        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Tarjeta" ? totalConDescuentoPuntos : 0),
         vuelto: vuelto > 0 ? vuelto : 0,
         cajeroId: cajeroId ? parseInt(cajeroId) : null,
         clienteId: clienteId ? parseInt(clienteId) : null,
-        total: granTotal,
+        total: totalConDescuentoPuntos,
         iva: totalIva
       });
       setFacturaIdImpresion(response.data.factura_id);
       setItemsParaRecibo([...carrito]);
       setTotalesRecibo({
-        granTotal,
+        granTotal: totalConDescuentoPuntos,
         totalIva,
         efectivoRecibido: metodoPago === "Mixto" ? efMixto : cashPaga,
         vuelto: vuelto > 0 ? vuelto : 0,
@@ -473,12 +493,54 @@ function VentasMayoristas() {
         metodoPago
       });
 
+      // Redimir puntos si el usuario los usó
+      let puntosRedimidos = 0;
+      let descuentoAplicado = 0;
+      if (puntosARedimir > 0) {
+        try {
+          const redimirRes = await API.post("/puntos/redimir", {
+            cliente_id: parseInt(clienteId || "0"),
+            total_venta: totalConDescuentoPuntos,
+            puntos_solicitados: puntosARedimir,
+            factura_id: response.data.factura_id,
+          });
+          puntosRedimidos = redimirRes.data.puntos_redimidos;
+          descuentoAplicado = redimirRes.data.descuento;
+        } catch (err: any) {
+          console.error("[PUNTOS] Error redimiendo puntos:", err);
+        }
+      }
+
       const clientObj = clientes.find(c => c.id === parseInt(clienteId));
       setPhoneWS(clientObj?.telefono?.replace(/\D/g, '') || "");
 
       setVentaExitosa(true);
       setShowCheckout(false);
+
+      const puntosInfo = response.data.puntos_info;
+      if (puntosInfo) {
+        setLastPuntosInfo({
+          puntosGanados: puntosInfo.puntosGanados || 0,
+          puntosAcumulados: puntosInfo.puntosDespues || 0,
+          meta: puntosInfo.puntos_totales || 0,
+          puntosRedimidos,
+          descuentoAplicado,
+        });
+      } else if (puntosRedimidos > 0) {
+        setLastPuntosInfo({
+          puntosGanados: 0,
+          puntosAcumulados: 0,
+          meta: 0,
+          puntosRedimidos,
+          descuentoAplicado,
+        });
+      }
       setCarrito([]);
+      setClienteId("1");
+      setPuntosARedimir(0);
+      setShowRedimirPuntos(false);
+
+      refetchPuntos();
       fetchInventory();
       verificarEstado();
     } catch (err: any) {
@@ -885,6 +947,30 @@ function VentasMayoristas() {
           </div>
         </div>
 
+        {/* Badge de Puntos del Cliente */}
+        {puntosCliente && configPuntos?.activo && (
+          <div className="mx-3 mt-2 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm animate-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[8px] font-bold text-amber-700 uppercase tracking-widest">🎯 Puntos</span>
+              <span className="text-[9px] font-bold text-amber-800">
+                {puntosCliente.puntos_acumulados} pts
+              </span>
+            </div>
+            {puntosCliente.nivel && (
+              <div className="flex items-center gap-1 mb-1">
+                <span className="text-[7px] font-semibold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  {puntosCliente.nivel.nombre}
+                </span>
+              </div>
+            )}
+            {puntosCliente.puntos_proximo_vencer > 0 && (
+              <p className="text-[7px] text-rose-500 font-medium italic">
+                ⚠️ {puntosCliente.puntos_proximo_vencer} pts próximos a vencer
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Lote Items Area */}
         <div className="flex-1 overflow-y-auto px-6 py-6 scrollbar-thin scrollbar-thumb-indigo-50 scrollbar-track-transparent">
           {carrito.length === 0 ? (
@@ -1035,10 +1121,59 @@ function VentasMayoristas() {
               <button onClick={() => setShowCheckout(false)} className="absolute right-4 top-4 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-white/80 hover:bg-white/30 hover:text-white transition-all text-lg">×</button>
               <h2 className="text-2xl font-semibold tracking-tight relative z-10">Cierre de Venta</h2>
               <p className="text-blue-100 text-xs font-medium mt-1 tracking-wide relative z-10">Total a Cobrar</p>
-              <div className="text-4xl font-semibold mt-2 tracking-tighter relative z-10">{formatCOP(granTotal)}</div>
+              <div className="text-4xl font-semibold mt-2 tracking-tighter relative z-10">
+                {formatCOP(granTotal)}
+                {puntosARedimir > 0 && (
+                  <span className="text-lg font-medium text-emerald-200 line-through ml-2">{formatCOP(granTotal)}</span>
+                )}
+              </div>
+              {puntosARedimir > 0 && (
+                <div className="text-emerald-200 text-sm font-semibold mt-1">
+                  Total con descuento: {formatCOP(Math.max(0, granTotal - (puntosARedimir * (configPuntos?.valor_punto ?? 1))))}
+                </div>
+              )}
             </div>
 
             <div className="px-8 py-6 space-y-6">
+              {/* Redención de Puntos */}
+              {puntosCliente && configPuntos?.activo && puntosCliente.puntos_acumulados > 0 && (
+                <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-4 border border-amber-200 space-y-3 animate-in fade-in duration-300">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-widest">🎯 Usar Puntos</span>
+                    <span className="text-xs font-bold text-amber-800">{puntosCliente.puntos_acumulados} pts disponibles</span>
+                  </div>
+                  {showRedimirPuntos ? (
+                    <div className="space-y-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={Math.min(puntosCliente.puntos_acumulados, Math.floor(granTotal * ((configPuntos?.porcentaje_redencion_max ?? 20) / 100)))}
+                        value={puntosARedimir}
+                        onChange={(e) => setPuntosARedimir(Math.min(parseInt(e.target.value) || 0, puntosCliente.puntos_acumulados, Math.floor(granTotal * ((configPuntos?.porcentaje_redencion_max ?? 20) / 100))))}
+                        className="w-full px-4 py-3 bg-white border-2 border-amber-200 rounded-xl text-xl font-semibold text-amber-700 outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-50 text-center"
+                        placeholder="0"
+                      />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500">Máx: {Math.min(puntosCliente.puntos_acumulados, Math.floor(granTotal * ((configPuntos?.porcentaje_redencion_max ?? 20) / 100)))} pts</span>
+                        <span className="font-semibold text-emerald-600">Dto: -{formatCOP(puntosARedimir * (configPuntos?.valor_punto ?? 1))}</span>
+                      </div>
+                      {puntosARedimir > 0 && (
+                        <div className="bg-emerald-100 rounded-xl p-3 text-center">
+                          <span className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">Nuevo Total</span>
+                          <span className="text-xl font-bold text-emerald-800 block mt-1">{formatCOP(Math.max(0, granTotal - (puntosARedimir * (configPuntos?.valor_punto ?? 1))))}</span>
+                        </div>
+                      )}
+                      <button onClick={() => { setShowRedimirPuntos(false); setPuntosARedimir(0); }} className="text-[9px] text-slate-400 hover:text-slate-600 uppercase tracking-wider font-medium">Cancelar</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowRedimirPuntos(true)} className="w-full py-3 bg-amber-600 text-white rounded-2xl font-semibold text-[10px] uppercase tracking-widest hover:bg-amber-700 transition-all shadow-lg shadow-amber-200">Redimir Puntos</button>
+                  )}
+                  {puntosCliente.puntos_proximo_vencer > 0 && (
+                    <p className="text-[8px] text-amber-500 text-center italic">⚠️ {puntosCliente.puntos_proximo_vencer} pts próximos a vencer</p>
+                  )}
+                </div>
+              )}
+
               {/* Método de Pago - Botones vibrantes */}
               <div className="space-y-3">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.15em] block text-center">Selecciona el Método de Pago</label>
@@ -1334,6 +1469,11 @@ function VentasMayoristas() {
             vuelto={totalesRecibo?.vuelto}
             pagoEfectivoMixto={totalesRecibo?.pagoEfectivoMixto}
             pagoTransferenciaMixto={totalesRecibo?.pagoTransferenciaMixto}
+            puntosGanados={lastPuntosInfo?.puntosGanados}
+            puntosAcumulados={lastPuntosInfo?.puntosAcumulados}
+            puntosMeta={lastPuntosInfo?.meta}
+            puntosRedimidos={lastPuntosInfo?.puntosRedimidos}
+            descuentoPuntos={lastPuntosInfo?.descuentoAplicado}
           />
         )}
       </div>

@@ -252,6 +252,28 @@ function PanelAdministracion() {
         )}
       </div>
 
+        {/* Fidelización */}
+        <section className="animate-in slide-in-from-bottom-4 delay-350 duration-500">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-2 h-8 bg-amber-500 rounded-full"></div>
+            <h2 className="text-xl font-black uppercase tracking-[0.2em] text-slate-800">🎯 Fidelización (Puntos)</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <AdminCard
+              to="/niveles-puntos" icon="🏅" title="Niveles de Cliente"
+              desc="Configura niveles con porcentajes de acumulación, redención y vigencia personalizados."
+              color="amber"
+              module="configuracion"
+            />
+            <AdminCard
+              to="/campanias-puntos" icon="📢" title="Campañas de Puntos"
+              desc="Crea promociones temporales: multiplicadores, puntos fijos o descuentos por campaña."
+              color="violet"
+              module="configuracion"
+            />
+          </div>
+        </section>
+
       <section id="seccion-planes" className="animate-in slide-in-from-bottom-4 duration-500 overflow-hidden relative mt-20">
         <PricingPlans isFullPage />
       </section>

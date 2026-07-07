@@ -27,6 +27,8 @@ import ConfiguracionDian from "./pages/ConfiguracionDian";
 import Cotizaciones from "./pages/Cotizaciones";
 import Renovacion from "./pages/Renovacion";
 import Cartera from "./pages/Cartera";
+import NivelesPuntos from "./pages/NivelesPuntos";
+import CampaniasPuntos from "./pages/CampaniasPuntos";
 
 import "./index.css";
 
@@ -405,6 +407,8 @@ function App() {
             <Route path="/configuracion-dian" element={<RoleRoute allowedRoles={allRoles} module="configuracion" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA}><ConfiguracionDian /></RoleRoute>} />
             <Route path="/reportes" element={<RoleRoute allowedRoles={allRoles} module="reportes"><Reportes /></RoleRoute>} />
             <Route path="/cartera" element={<RoleRoute allowedRoles={allRoles} module="cartera"><Cartera /></RoleRoute>} />
+            <Route path="/niveles-puntos" element={<RoleRoute allowedRoles={allRoles} module="configuracion"><NivelesPuntos /></RoleRoute>} />
+            <Route path="/campanias-puntos" element={<RoleRoute allowedRoles={allRoles} module="configuracion"><CampaniasPuntos /></RoleRoute>} />
 
             <Route path="/separados" element={<RoleRoute allowedRoles={allRoles} module="separados"><Separados /></RoleRoute>} />
             <Route path="/inventario-global" element={<RoleRoute allowedRoles={allRoles} module="inventario"><InventarioAdmin /></RoleRoute>} />
