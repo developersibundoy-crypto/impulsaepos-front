@@ -3,9 +3,6 @@ import { API_BASE_URL } from "../config/runtime";
 
 const API = axios.create({
   baseURL: API_BASE_URL
-  //baseURL: "http://localhost:4000"
-  //baseURL: "https://api.impulsaepos.com"
-
 });
 
 // Interceptor para inyectar Token y Tenant ID automáticamente a todas las llamadas
