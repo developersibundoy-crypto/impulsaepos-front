@@ -721,6 +721,7 @@ function Productos() {
       setPagoEfectivoMixto("");
       setPagoTransferenciaMixto("");
 
+      refetchPuntos();
       fetchInventory(page);
 
       // Sincronizar estado de caja reactivamente si estamos en una sesión
