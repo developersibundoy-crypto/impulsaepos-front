@@ -4,6 +4,12 @@ import { API_BASE_URL } from "../config/runtime";
 const API = axios.create({
   baseURL: API_BASE_URL
 });
+console.log("CEDENCIALES  CREDENCIALES", API_BASE_URL);
+console.log("CEDENCIALES  CREDENCIALES", API_BASE_URL);
+console.log("CEDENCIALES  CREDENCIALES", API_BASE_URL);
+console.log("CEDENCIALES  CREDENCIALES", API_BASE_URL);
+console.log("CEDENCIALES  CREDENCIALES", API_BASE_URL);
+console.log("CEDENCIALES  CREDENCIALES", API_BASE_URL);
 
 // Interceptor para inyectar Token y Tenant ID automáticamente a todas las llamadas
 API.interceptors.request.use((config) => {
