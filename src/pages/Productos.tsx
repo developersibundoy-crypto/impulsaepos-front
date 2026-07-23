@@ -721,7 +721,6 @@ function Productos() {
       setPagoEfectivoMixto("");
       setPagoTransferenciaMixto("");
 
-      refetchPuntos();
       fetchInventory(page);
 
       // Sincronizar estado de caja reactivamente si estamos en una sesión
@@ -1118,7 +1117,7 @@ function Productos() {
         </div>
 
         {/* Badge de Puntos del Cliente */}
-        {puntosCliente && configPuntos?.activo && (
+        {puntosCliente && configPuntos?.activo && clienteId !== "1" && (
           <div className="mx-4 mt-2 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 shadow-sm animate-in slide-in-from-top-2 duration-300">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[9px] font-bold text-amber-700 uppercase tracking-widest">🎯 Puntos</span>
