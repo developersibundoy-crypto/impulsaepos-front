@@ -35,6 +35,13 @@ export default function Separados() {
 
   const [newClienteId, setNewClienteId] = useState("");
   const [clienteSearch, setClienteSearch] = useState("");
+  const [mainClientSearch, setMainClientSearch] = useState("");
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  const selectedClienteRef = useRef<Cliente | null>(null);
+  useEffect(() => {
+    selectedClienteRef.current = selectedCliente;
+  }, [selectedCliente]);
+
   const [cart, setCart] = useState<any[]>([]);
   const [originalCart, setOriginalCart] = useState<any[]>([]);
   const [prodSearch, setProdSearch] = useState("");
@@ -71,7 +78,6 @@ export default function Separados() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    fetchSeparados();
     API.get("/clientes").then(res => setClientes(res.data)).catch(console.error);
     API.get("/productos?limit=99999").then(res => setProductos(Array.isArray(res.data) ? res.data : (res.data.data || []))).catch(console.error);
     API.get("/cajeros")
@@ -116,11 +122,22 @@ export default function Separados() {
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedCliente) {
+      fetchSeparados();
+    } else {
+      setSeparados([]);
+    }
+  }, [selectedCliente]);
+
   const fetchSeparados = () => {
-    setLoading(true);
-    API.get("/separados")
-      .then(res => { setSeparados(res.data); setLoading(false); })
-      .catch(console.error);
+    const clientId = selectedClienteRef.current?.id;
+    if (clientId) {
+      setLoading(true);
+      API.get(`/separados/cliente/${clientId}`)
+        .then(res => { setSeparados(res.data); setLoading(false); })
+        .catch(console.error);
+    }
   };
 
   const handleCreate = async () => {
@@ -429,50 +446,109 @@ export default function Separados() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-8 border-b border-slate-200">
           <div className="space-y-1">
             <h1 className="text-4xl tracking-tight text-blue-900 bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-cyan-500 font-black">
-              Sistema de Separados
+              {selectedCliente ? `Separados de ${selectedCliente.nombre}` : 'Módulo de Separados'}
             </h1>
-            <p className="text-blue-400 font-medium text-lg italic">Créditos, abonos y reserva de inventario premium.</p>
+            <p className="text-blue-400 font-medium text-lg italic">
+              {selectedCliente ? 'Gestión independiente de créditos y apartados.' : 'Busca y selecciona un cliente para gestionar sus separados.'}
+            </p>
           </div>
-          <button
-            onClick={() => {
-              setIsEditing(false);
-              setEditingId(null);
-              setCart([]);
-              setOriginalCart([]);
-              setNewClienteId("");
-              setShowNewModal(true);
-            }}
-            className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-[24px] text-xs font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.3)] hover:shadow-blue-300 hover:-translate-y-1 transition-all active:scale-95"
-          >
-            + Iniciar Nuevo Trámite
-          </button>
+          <div className="flex gap-4">
+            {selectedCliente && (
+              <button
+                onClick={() => {
+                  setSelectedCliente(null);
+                  setMainClientSearch("");
+                }}
+                className="px-6 py-4 bg-white text-slate-600 border border-slate-200 rounded-[24px] text-xs font-black uppercase tracking-widest shadow-sm hover:bg-slate-50 transition-all active:scale-95"
+              >
+                ← Volver
+              </button>
+            )}
+            {selectedCliente && (
+              <button
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditingId(null);
+                  setCart([]);
+                  setOriginalCart([]);
+                  setNewClienteId(selectedCliente.id.toString());
+                  setShowNewModal(true);
+                }}
+                className="px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-[24px] text-xs font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(37,99,235,0.3)] hover:shadow-blue-300 hover:-translate-y-1 transition-all active:scale-95"
+              >
+                + Nuevo Separado
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="relative group">
-          <span className="absolute left-6 top-1/2 -translate-y-1/2 text-blue-400 group-focus-within:text-blue-600 transition-colors text-xl">🔍</span>
-          <input
-            type="text"
-            placeholder="Localizar separado por cliente, ID o documento..."
-            value={termSeparado}
-            onChange={e => setTermSeparado(e.target.value)}
-            className="w-full pl-16 pr-8 py-5 bg-white border-2 border-blue-50 rounded-[32px] text-slate-700 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-400 transition-all shadow-[0_4px_20px_rgba(59,130,246,0.05)]"
-          />
-        </div>
-
-        {/* List Card */}
-        <div className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-8 border-b border-blue-50 flex items-center justify-between bg-blue-50/20">
-            <h3 className="text-lg text-blue-900 uppercase tracking-widest flex items-center gap-2 font-black">
-              <span className="w-2 h-6 bg-blue-600 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.5)]"></span> Cartera Activa
-            </h3>
-            <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest px-4 py-1.5 bg-white border border-blue-100 rounded-full shadow-sm">
-              {filteredSeparados.length} Registros Activos
-            </span>
+        {!selectedCliente ? (
+          <div className="max-w-3xl mx-auto space-y-6 pt-10">
+             <div className="relative group">
+                <span className="absolute left-8 top-1/2 -translate-y-1/2 text-blue-400 text-2xl">🔍</span>
+                <input
+                  type="text"
+                  placeholder="Escribe el nombre o documento del cliente..."
+                  value={mainClientSearch}
+                  onChange={e => setMainClientSearch(e.target.value)}
+                  className="w-full pl-20 pr-8 py-8 bg-white border-2 border-blue-50 rounded-[40px] text-slate-700 text-xl font-medium outline-none focus:border-blue-400 focus:ring-8 focus:ring-blue-50 transition-all shadow-[0_10px_40px_rgba(59,130,246,0.08)]"
+                />
+             </div>
+             
+             {mainClientSearch && (
+               <div className="bg-white rounded-[40px] border border-slate-100 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 mt-6">
+                 {(clientes as any[]).filter(c =>
+                   (c.nombre && String(c.nombre).toLowerCase().includes(mainClientSearch.toLowerCase())) ||
+                   (c.documento && String(c.documento).includes(mainClientSearch))
+                 ).slice(0, 8).map(c => (
+                   <div key={c.id} onClick={() => { setSelectedCliente(c); setMainClientSearch(""); }} className="p-8 hover:bg-blue-50 cursor-pointer border-b border-slate-50 flex items-center justify-between group transition-colors">
+                     <div>
+                       <div className="text-xl font-black text-slate-800 uppercase tracking-tight">{c.nombre}</div>
+                       <div className="text-sm font-bold text-slate-400 mt-1">DOC: {c.documento}</div>
+                     </div>
+                     <span className="text-blue-600 font-black uppercase tracking-widest text-[10px] px-6 py-3 bg-white border border-blue-100 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                        Ver Módulo →
+                     </span>
+                   </div>
+                 ))}
+                 {(clientes as any[]).filter(c =>
+                   (c.nombre && String(c.nombre).toLowerCase().includes(mainClientSearch.toLowerCase())) ||
+                   (c.documento && String(c.documento).includes(mainClientSearch))
+                 ).length === 0 && (
+                    <div className="p-8 text-center text-slate-400 font-bold uppercase tracking-widest text-sm">
+                      No se encontraron clientes
+                    </div>
+                 )}
+               </div>
+             )}
           </div>
+        ) : (
+          <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+            {/* Search Bar del Historial */}
+            <div className="relative group">
+              <span className="absolute left-6 top-1/2 -translate-y-1/2 text-blue-400 group-focus-within:text-blue-600 transition-colors text-xl">🔍</span>
+              <input
+                type="text"
+                placeholder="Filtrar historial por ID de separado..."
+                value={termSeparado}
+                onChange={e => setTermSeparado(e.target.value)}
+                className="w-full pl-16 pr-8 py-5 bg-white border-2 border-blue-50 rounded-[32px] text-slate-700 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-400 transition-all shadow-[0_4px_20px_rgba(59,130,246,0.05)]"
+              />
+            </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            {/* List Card */}
+            <div className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-blue-50 flex items-center justify-between bg-blue-50/20">
+                <h3 className="text-lg text-blue-900 uppercase tracking-widest flex items-center gap-2 font-black">
+                  <span className="w-2 h-6 bg-blue-600 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.5)]"></span> Historial de Operaciones
+                </h3>
+                <span className="text-[10px] text-blue-600 font-bold uppercase tracking-widest px-4 py-1.5 bg-white border border-blue-100 rounded-full shadow-sm">
+                  {filteredSeparados.length} Registros Activos
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
               <thead>
                 <tr className="text-[10px] text-slate-400 uppercase tracking-widest border-b border-slate-100 bg-white">
                   <th className="px-8 py-5">Control #</th>
@@ -529,8 +605,10 @@ export default function Separados() {
             </table>
           </div>
         </div>
+        </div>
+        )}
 
-        {/* MODAL: New Separado */}
+      {/* MODAL: New Separado */}
         {showNewModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setShowNewModal(false)}></div>
@@ -550,7 +628,9 @@ export default function Separados() {
                       <span className="text-xs font-bold text-blue-800 uppercase tracking-tight">
                         {clientes.find(c => c.id.toString() === newClienteId)?.nombre}
                       </span>
-                      <button onClick={() => setNewClienteId("")} className="text-[10px] font-black text-red-400 hover:text-red-600">QUITAR</button>
+                      {!selectedCliente && (
+                        <button onClick={() => setNewClienteId("")} className="text-[10px] font-black text-red-400 hover:text-red-600">QUITAR</button>
+                      )}
                     </div>
                   ) : (
                     <div className="relative">

@@ -10,6 +10,10 @@ function Reportes() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Abonos States
+  const [abonosData, setAbonosData] = useState<any>(null);
+  const [loadingAbonos, setLoadingAbonos] = useState(false);
+
   // Filter States
   const [cajeros, setCajeros] = useState<any[]>([]);
   const [filtroCajero, setFiltroCajero] = useState("");
@@ -104,6 +108,21 @@ function Reportes() {
     fetchDetailedReport(1);
     fetchSoldCategories();
   }, [filtroCajero, filtroCategoria, filtroTipo, filtroTipoFactura, startDate, endDate]);
+
+  useEffect(() => {
+    setLoadingAbonos(true);
+    const params = new URLSearchParams();
+    if (filtroCajero) params.append("cajeroId", filtroCajero);
+    if (startDate) params.append("startDate", startDate);
+    if (endDate) params.append("endDate", endDate);
+
+    API.get(`/reportes/abonos-separados?${params.toString()}`)
+      .then(res => {
+        setAbonosData(res.data);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingAbonos(false));
+  }, [filtroCajero, startDate, endDate]);
 
   const handleExportVentasExcel = async () => {
     setLoading(true);
@@ -639,8 +658,8 @@ function Reportes() {
                               <td className="py-4 pl-4">
                                 <div className="flex items-center gap-4">
                                   <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg shadow-md transition-transform group-hover:scale-110 duration-500 ${i === 0 ? 'bg-gradient-to-br from-amber-100 to-amber-200 text-amber-700 ring-2 ring-amber-50' :
-                                      i === 1 ? 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700 ring-2 ring-slate-50' :
-                                        'bg-gradient-to-br from-orange-50 to-orange-100 text-orange-700 ring-2 ring-orange-50'
+                                    i === 1 ? 'bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700 ring-2 ring-slate-50' :
+                                      'bg-gradient-to-br from-orange-50 to-orange-100 text-orange-700 ring-2 ring-orange-50'
                                     }`}>
                                     {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
                                   </div>
@@ -671,14 +690,31 @@ function Reportes() {
                               </td>
                               <td className="py-4 text-right pr-4">
                                 <div className="text-xl text-slate-900 tracking-tighter font-medium">{formatCOP(c.dinero_recaudado)}</div>
-                                <div className="flex gap-2 justify-end mt-2">
-                                  <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-xl">
-                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Efectivo:</span>
+                                <div className="flex flex-wrap gap-2 justify-end mt-2 max-w-[280px]">
+                                  <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Efe:</span>
                                     <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_efectivo)}</span>
                                   </div>
-                                  <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-100 rounded-xl">
-                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Digital:</span>
+                                  <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Trans:</span>
                                     <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_transferencia)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Tarj:</span>
+                                    <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_tarjeta)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Addi:</span>
+                                    <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_addi)}</span>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-0.5 px-2 py-1 bg-indigo-50 border border-indigo-100 rounded-xl w-full">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[8px] text-indigo-400 uppercase tracking-widest">Mixto:</span>
+                                      <span className="text-[10px] text-indigo-700 font-normal">{formatCOP(c.dinero_mixto_efectivo + c.dinero_mixto_transferencia)}</span>
+                                    </div>
+                                    <span className="text-[7.5px] text-indigo-400 uppercase tracking-tighter">
+                                      (Efe: {formatCOP(c.dinero_mixto_efectivo)} | Dig: {formatCOP(c.dinero_mixto_transferencia)})
+                                    </span>
                                   </div>
                                 </div>
                               </td>
@@ -808,6 +844,144 @@ function Reportes() {
               </div>
             </div>
           )}
+
+          {/* PANEL DE ABONOS DE SEPARADOS */}
+          <div className="mt-16 space-y-12">
+            <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4 border-t border-slate-200 pt-16">
+              <div className="space-y-1">
+                <h3 className="text-3xl text-slate-900 tracking-tight flex items-center gap-3">
+                  <span className="w-2.5 h-8 bg-purple-500 rounded-full"></span> Abonos de Separados
+                </h3>
+                <p className="text-slate-400 text-sm font-medium ml-5">Recaudación independiente por concepto de abonos a productos separados.</p>
+              </div>
+            </div>
+
+            {loadingAbonos ? (
+              <div className="flex flex-col items-center justify-center min-h-[200px] gap-4">
+                <div className="w-8 h-8 border-4 border-purple-100 border-t-purple-600 rounded-full animate-spin"></div>
+                <p className="text-slate-400 font-medium uppercase tracking-[0.2em] text-xs">Cargando abonos...</p>
+              </div>
+            ) : abonosData ? (
+              <>
+                {/* Resumen de Abonos */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+                    <div className="relative z-10">
+                      <span className="text-[10px] uppercase tracking-[0.3em] text-purple-500 mb-2 block">Total Abonos Recaudados</span>
+                      <div className="text-4xl text-purple-600 tracking-tighter truncate">{formatCOP(abonosData.total_abonos || 0)}</div>
+                    </div>
+                    <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">💳</div>
+                  </div>
+
+                  <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-500 group relative overflow-hidden">
+                    <div className="relative z-10">
+                      <span className="text-[10px] uppercase tracking-[0.3em] text-slate-400 mb-2 block">Cantidad de Abonos</span>
+                      <div className="text-4xl text-slate-900 tracking-tighter truncate">{abonosData.cantidad_abonos || 0}</div>
+                    </div>
+                    <div className="absolute -right-4 -bottom-4 text-8xl opacity-[0.03] group-hover:opacity-[0.08] transition-opacity duration-700 select-none">📦</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
+                  {/* Abonos por Cajero */}
+                  <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col hover:shadow-xl transition-shadow duration-500">
+                    <div className="flex items-center justify-between mb-8">
+                      <div className="space-y-1">
+                        <h3 className="text-2xl text-slate-900 tracking-tight flex items-center gap-3">
+                          <span className="w-2.5 h-8 bg-fuchsia-500 rounded-full"></span> Abonos por Cajero
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-x-auto custom-scrollbar">
+                      <table className="w-full text-left min-w-[400px]">
+                        <thead>
+                          <tr className="text-[11px] text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
+                            <th className="pb-4 pl-4">Cajero / Asesor</th>
+                            <th className="pb-4 text-center">Abonos Realizados</th>
+                            <th className="pb-4 text-right pr-4">Total Recaudado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {abonosData.abonosPorCajero && abonosData.abonosPorCajero.length > 0 ? (
+                            abonosData.abonosPorCajero.map((c: any, i: number) => (
+                              <tr key={i} className="group hover:bg-slate-50/80 transition-all duration-300">
+                                <td className="py-4 pl-4">
+                                  <div className="flex items-center gap-4">
+                                    <div className="flex flex-col">
+                                      <span className="text-base text-slate-900 uppercase tracking-tight font-normal">{c.nombre}</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-4 text-center">
+                                  <span className="text-lg text-slate-900 font-medium">{c.cantidad_abonos}</span>
+                                </td>
+                                <td className="py-4 text-right pr-4">
+                                  <span className="text-xl text-purple-600 font-medium">{formatCOP(c.dinero_recaudado)}</span>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr><td colSpan={3} className="py-12 text-center text-slate-300 italic text-xs tracking-widest">Sin abonos registrados.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Detalle de Abonos */}
+                  <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col hover:shadow-xl transition-shadow duration-500">
+                    <div className="flex items-center justify-between mb-8">
+                      <div className="space-y-1">
+                        <h3 className="text-2xl text-slate-900 tracking-tight flex items-center gap-3">
+                          <span className="w-2.5 h-8 bg-sky-500 rounded-full"></span> Detalle de Abonos
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-x-auto custom-scrollbar max-h-[400px] overflow-y-auto">
+                      <table className="w-full text-left min-w-[500px]">
+                        <thead>
+                          <tr className="text-[11px] text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
+                            <th className="pb-4 pl-4">Fecha</th>
+                            <th className="pb-4">Separado</th>
+                            <th className="pb-4">Cliente</th>
+                            <th className="pb-4 text-right pr-4">Valor / Método</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {abonosData.detalleAbonos && abonosData.detalleAbonos.length > 0 ? (
+                            abonosData.detalleAbonos.map((a: any, i: number) => (
+                              <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="py-4 pl-4">
+                                  <span className="text-xs text-slate-700">{new Date(a.fecha_pago).toLocaleDateString()}</span>
+                                </td>
+                                <td className="py-4">
+                                  <span className="text-xs text-slate-900 font-medium">SEP-{a.separado_id}</span>
+                                </td>
+                                <td className="py-4">
+                                  <span className="text-xs text-slate-700">{a.cliente_id === 1 ? 'Mostrador' : (a.cliente || 'General')}</span>
+                                </td>
+                                <td className="py-4 text-right pr-4">
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-sm font-medium text-slate-900">{formatCOP(a.monto)}</span>
+                                    <span className="text-[9px] text-slate-400 uppercase tracking-widest">{a.metodo_pago}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr><td colSpan={4} className="py-12 text-center text-slate-300 italic text-xs tracking-widest">Sin detalles registrados.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+
         </>
       )}
 
@@ -1001,7 +1175,7 @@ function Reportes() {
                                       {r.estado} {expandedCajaRow === r.id ? '▲' : '▼'}
                                     </span>
                                     {r.estado === 'Cerrada' && (
-                                      <button 
+                                      <button
                                         onClick={(e) => handleImprimirCaja(r, e)}
                                         className="text-lg hover:scale-110 transition-transform active:scale-95 bg-white shadow-sm border border-slate-200 rounded-lg p-1.5 hover:border-indigo-200 hover:bg-indigo-50"
                                         title="Re-imprimir Ticket de Cierre"
@@ -1080,7 +1254,7 @@ function Reportes() {
               <h2 className="text-3xl font-medium text-slate-900 tracking-tighter uppercase italic">Panel Financiero</h2>
               <p className="text-slate-500 text-sm font-medium uppercase tracking-widest mt-1">Centro de mando y salud económica de la empresa</p>
             </div>
-            
+
             <div className="flex flex-wrap items-end gap-3 no-print">
               <div className="flex flex-col gap-1">
                 <label className="text-[9px] font-normal text-slate-400 uppercase tracking-widest ml-1">Desde</label>
@@ -1199,44 +1373,44 @@ function Reportes() {
 
               {/* Chart for summary would be ideally an evolution chart, but without historical data array, we represent total values as summary. */}
               <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm hover:shadow-xl transition-shadow duration-500">
-                  <div className="flex items-center justify-between mb-8">
-                    <h3 className="text-xl text-slate-900 tracking-tight flex items-center gap-2">
-                      <span className="w-2 h-6 bg-indigo-500 rounded-full"></span> Resumen de Valores Contables
-                    </h3>
-                  </div>
-                  <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={[
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-xl text-slate-900 tracking-tight flex items-center gap-2">
+                    <span className="w-2 h-6 bg-indigo-500 rounded-full"></span> Resumen de Valores Contables
+                  </h3>
+                </div>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={[
+                        { name: 'Caja Actual', valor: dataFinanciera.cajaActual, fill: '#10b981' },
+                        { name: 'Cx Cobrar', valor: dataFinanciera.cxc.total, fill: '#f59e0b' },
+                        { name: 'Cx Pagar', valor: dataFinanciera.cxp.total, fill: '#ef4444' },
+                        { name: 'Gastos', valor: dataFinanciera.salidasManuales, fill: '#6366f1' }
+                      ]}
+                      layout="vertical"
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                      <XAxis type="number" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} width={100} />
+                      <RechartsTooltip
+                        cursor={{ fill: '#f8fafc' }}
+                        formatter={(value: any) => [formatCOP(value), "Total"]}
+                      />
+                      <Bar dataKey="valor" radius={[0, 12, 12, 0]} barSize={30}>
+                        {
+                          [
                             { name: 'Caja Actual', valor: dataFinanciera.cajaActual, fill: '#10b981' },
                             { name: 'Cx Cobrar', valor: dataFinanciera.cxc.total, fill: '#f59e0b' },
                             { name: 'Cx Pagar', valor: dataFinanciera.cxp.total, fill: '#ef4444' },
                             { name: 'Gastos', valor: dataFinanciera.salidasManuales, fill: '#6366f1' }
-                          ]}
-                          layout="vertical"
-                        >
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                          <XAxis type="number" tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-                          <YAxis type="category" dataKey="name" tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} axisLine={false} tickLine={false} width={100} />
-                          <RechartsTooltip 
-                            cursor={{ fill: '#f8fafc' }} 
-                            formatter={(value: any) => [formatCOP(value), "Total"]}
-                          />
-                          <Bar dataKey="valor" radius={[0, 12, 12, 0]} barSize={30}>
-                            {
-                              [
-                                { name: 'Caja Actual', valor: dataFinanciera.cajaActual, fill: '#10b981' },
-                                { name: 'Cx Cobrar', valor: dataFinanciera.cxc.total, fill: '#f59e0b' },
-                                { name: 'Cx Pagar', valor: dataFinanciera.cxp.total, fill: '#ef4444' },
-                                { name: 'Gastos', valor: dataFinanciera.salidasManuales, fill: '#6366f1' }
-                              ].map((entry: any, index: number) => (
-                                <Cell key={`cell-${index}`} fill={entry.fill} />
-                              ))
-                            }
-                          </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                          ].map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))
+                        }
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
 
               {(dataFinanciera.cxc.vencidas > 0 || dataFinanciera.cxp.vencidas > 0) && (
@@ -1258,19 +1432,19 @@ function Reportes() {
 
       {/* Hidden Print Container */}
       <div className="hidden">
-         {cierreDataPrint && (
-           <PrintReceipt
-             ref={printCajaRef}
-             empresa={empresaData}
-             isCierreCaja={true}
-             cierreData={cierreDataPrint}
-             items={[]}
-             total={0}
-             numero={0}
-             fecha={new Date().toISOString()}
-             cliente=""
-           />
-         )}
+        {cierreDataPrint && (
+          <PrintReceipt
+            ref={printCajaRef}
+            empresa={empresaData}
+            isCierreCaja={true}
+            cierreData={cierreDataPrint}
+            items={[]}
+            total={0}
+            numero={0}
+            fecha={new Date().toISOString()}
+            cliente=""
+          />
+        )}
       </div>
     </div>
   );

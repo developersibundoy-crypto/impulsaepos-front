@@ -83,6 +83,7 @@ function Productos() {
   const [pagoEfectivoMixto, setPagoEfectivoMixto] = useState("");
   const [pagoTransferenciaMixto, setPagoTransferenciaMixto] = useState("");
   const [pagoTarjeta, setPagoTarjeta] = useState("");
+  const [pagoTransferencia, setPagoTransferencia] = useState("");
 
   // ERP States
   const [cajeros, setCajeros] = useState<any[]>([]);
@@ -143,6 +144,8 @@ function Productos() {
   const [showIngresoModal, setShowIngresoModal] = useState(false);
   const [showSeparadosHistoryModal, setShowSeparadosHistoryModal] = useState(false);
   const [showRuleta, setShowRuleta] = useState(false);
+  const [editingPriceId, setEditingPriceId] = useState<number | null>(null);
+  const [tempPrice, setTempPrice] = useState<string>("");
 
   // ─── Sistema de Puntos (Arquitectura Financiera) ──────────────────────────
   const { configPuntos, puntosCliente, loadingPuntos, refetchPuntos } = usePuntos(clienteId);
@@ -645,7 +648,7 @@ function Productos() {
         }),
         metodoPago,
         efectivoEntregado: metodoPago === "Mixto" ? efMixto : cashPaga,
-        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Tarjeta" ? totalConDescuentoPuntos : 0),
+        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Transferencia" ? parseCurrency(pagoTransferencia) : (metodoPago === "Tarjeta" ? parseCurrency(pagoTarjeta) : (metodoPago === "Addi" ? totalConDescuentoPuntos : 0))),
         vuelto: metodoPago === "Efectivo" && vuelto > 0 ? vuelto : 0,
         cajeroId: cajeroId ? parseInt(cajeroId) : null,
         clienteId: clienteId ? parseInt(clienteId) : null,
@@ -718,6 +721,7 @@ function Productos() {
       setSearch("");
       setPagoCliente("");
       setPagoTarjeta("");
+      setPagoTransferencia("");
       setPagoEfectivoMixto("");
       setPagoTransferenciaMixto("");
 
@@ -1219,10 +1223,43 @@ function Productos() {
 
 
                   <div className="text-right shrink-0 min-w-[80px]">
-                    <div className="text-xs text-slate-900 italic font-medium">
-                      {formatCOP(Math.round(item.precio_venta * (1 - (item.descuento || 0) / 100)) * item.qty)}
-                    </div>
-                    <div className="text-[8px] text-indigo-400 uppercase tracking-tighter">
+                    {editingPriceId === item.id ? (
+                      <input
+                        type="number"
+                        autoFocus
+                        className="w-full text-xs text-right border border-indigo-300 rounded bg-indigo-50 outline-none px-1 py-0.5"
+                        value={tempPrice}
+                        onChange={(e) => setTempPrice(e.target.value)}
+                        onBlur={() => {
+                          const newSubtotal = parseFloat(tempPrice);
+                          if (!isNaN(newSubtotal) && item.precio_venta > 0 && item.qty > 0) {
+                            const newUnitPrice = newSubtotal / item.qty;
+                            let calcDesc = (1 - (newUnitPrice / item.precio_venta)) * 100;
+                            if (calcDesc < 0) calcDesc = 0;
+                            if (calcDesc > 100) calcDesc = 100;
+                            actualizarDescuento(item.id, calcDesc.toString());
+                          }
+                          setEditingPriceId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.currentTarget.blur();
+                          if (e.key === 'Escape') setEditingPriceId(null);
+                        }}
+                      />
+                    ) : (
+                      <div
+                        className="text-xs text-slate-900 italic font-medium cursor-pointer hover:text-indigo-600"
+                        onDoubleClick={() => {
+                          setEditingPriceId(item.id);
+                          const currentSubtotal = Math.round(item.precio_venta * (1 - (item.descuento || 0) / 100)) * item.qty;
+                          setTempPrice(currentSubtotal.toString());
+                        }}
+                        title="Doble clic para modificar total"
+                      >
+                        {formatCOP(Math.round(item.precio_venta * (1 - (item.descuento || 0) / 100)) * item.qty)}
+                      </div>
+                    )}
+                    <div className="text-[8px] text-indigo-400 uppercase tracking-tighter mt-1">
                       {item.descuento > 0 ? (
                         <span className="text-rose-500 line-through mr-1">{formatCOP(item.precio_venta)}</span>
                       ) : null}
@@ -1371,7 +1408,7 @@ function Productos() {
               {/* Método de Pago - Botones vibrantes */}
               <div className="space-y-3">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.15em] block text-center">Selecciona el Método de Pago</label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-5 gap-2">
                   {/* Efectivo - Azul */}
                   <button
                     onClick={() => setMetodoPago("Efectivo")}
@@ -1379,8 +1416,19 @@ function Productos() {
                       ? 'bg-gradient-to-b from-blue-600 to-blue-700 border-blue-500 text-white shadow-lg shadow-blue-200 scale-105'
                       : 'bg-blue-50 border-blue-100 text-blue-400 hover:border-blue-300 hover:bg-blue-100 hover:scale-[1.02]'}`}
                   >
-                    <span className="text-2xl group-hover:scale-110 transition-transform">💵</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider">Efectivo</span>
+                    <span className="text-xl group-hover:scale-110 transition-transform">💵</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider">Efectivo</span>
+                  </button>
+
+                  {/* Transferencia - Teal */}
+                  <button
+                    onClick={() => setMetodoPago("Transferencia")}
+                    className={`group flex flex-col items-center gap-2 py-3 rounded-2xl border-2 transition-all duration-300 ${metodoPago === "Transferencia"
+                      ? 'bg-gradient-to-b from-teal-600 to-teal-700 border-teal-500 text-white shadow-lg shadow-teal-200 scale-105'
+                      : 'bg-teal-50 border-teal-100 text-teal-400 hover:border-teal-300 hover:bg-teal-100 hover:scale-[1.02]'}`}
+                  >
+                    <span className="text-xl group-hover:scale-110 transition-transform">🏦</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider">Transf.</span>
                   </button>
 
                   {/* Tarjeta - Verde medio */}
@@ -1390,8 +1438,8 @@ function Productos() {
                       ? 'bg-gradient-to-b from-indigo-600 to-indigo-700 border-indigo-500 text-white shadow-lg shadow-indigo-200 scale-105'
                       : 'bg-indigo-50 border-indigo-100 text-indigo-400 hover:border-indigo-300 hover:bg-indigo-100 hover:scale-[1.02]'}`}
                   >
-                    <span className="text-2xl group-hover:scale-110 transition-transform">💳</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider">Tarjeta</span>
+                    <span className="text-xl group-hover:scale-110 transition-transform">💳</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider">Tarjeta</span>
                   </button>
 
                   {/* Mixto - Naranja */}
@@ -1401,8 +1449,19 @@ function Productos() {
                       ? 'bg-gradient-to-b from-sky-600 to-sky-700 border-sky-500 text-white shadow-lg shadow-sky-200 scale-105'
                       : 'bg-sky-50 border-sky-100 text-sky-400 hover:border-sky-300 hover:bg-sky-100 hover:scale-[1.02]'}`}
                   >
-                    <span className="text-2xl group-hover:scale-110 transition-transform">🔀</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-wider">Mixto</span>
+                    <span className="text-xl group-hover:scale-110 transition-transform">🔀</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider">Mixto</span>
+                  </button>
+                  
+                  {/* Addi - Violeta */}
+                  <button
+                    onClick={() => setMetodoPago("Addi")}
+                    className={`group flex flex-col items-center gap-2 py-3 rounded-2xl border-2 transition-all duration-300 ${metodoPago === "Addi"
+                      ? 'bg-gradient-to-b from-violet-600 to-violet-700 border-violet-500 text-white shadow-lg shadow-violet-200 scale-105'
+                      : 'bg-violet-50 border-violet-100 text-violet-400 hover:border-violet-300 hover:bg-violet-100 hover:scale-[1.02]'}`}
+                  >
+                    <span className="text-xl group-hover:scale-110 transition-transform">🏷️</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider">Addi</span>
                   </button>
                 </div>
               </div>
@@ -1440,34 +1499,73 @@ function Productos() {
                   </div>
                 )}
 
-                {metodoPago === "Tarjeta" && (
-                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-6 border border-emerald-100 space-y-4 animate-in fade-in duration-300">
-                    <label className="text-[10px] font-semibold text-emerald-600 uppercase tracking-widest block text-center">💳 Monto en Tarjeta</label>
+                {metodoPago === "Transferencia" && (
+                  <div className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-2xl p-6 border border-teal-100 space-y-4 animate-in fade-in duration-300">
+                    <label className="text-[10px] font-semibold text-teal-600 uppercase tracking-widest block text-center">🏦 Monto Transferido</label>
                     <div className="relative">
-                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-semibold text-emerald-300">$</span>
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-semibold text-teal-300">$</span>
+                      <input
+                        autoFocus
+                        type="text"
+                        value={pagoTransferencia}
+                        onChange={e => handleCurrencyInputChange(e, setPagoTransferencia)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && parseCurrency(pagoTransferencia) >= granTotal && !isProcessing) {
+                            e.preventDefault();
+                            confirmarVenta();
+                          }
+                        }}
+                        className="w-full pl-14 pr-6 py-4 bg-white border-2 border-teal-200 rounded-xl text-3xl font-semibold text-slate-900 focus:border-teal-500 focus:ring-4 focus:ring-teal-100 outline-none transition-all text-center tracking-tighter"
+                        placeholder="0"
+                      />
+                    </div>
+                    {pagoTransferencia !== "" && (
+                      <div className={`rounded-xl p-4 text-white text-center animate-in zoom-in duration-300 shadow-lg ${parseCurrency(pagoTransferencia) >= granTotal
+                        ? 'bg-gradient-to-r from-teal-500 to-emerald-500 shadow-teal-200'
+                        : 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-200'}`}>
+                        <span className="text-[9px] font-semibold uppercase tracking-[0.2em] block opacity-90">{parseCurrency(pagoTransferencia) >= granTotal ? "Monto Completo" : "Diferencia con Total"}</span>
+                        <span className="text-3xl font-semibold tracking-tighter block mt-1">{formatCOP(Math.abs(granTotal - parseCurrency(pagoTransferencia)))}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {metodoPago === "Tarjeta" && (
+                  <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 border border-indigo-100 space-y-4 animate-in fade-in duration-300">
+                    <label className="text-[10px] font-semibold text-indigo-600 uppercase tracking-widest block text-center">💳 Monto en Tarjeta</label>
+                    <div className="relative">
+                      <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-semibold text-indigo-300">$</span>
                       <input
                         autoFocus
                         type="text"
                         value={pagoTarjeta}
                         onChange={e => handleCurrencyInputChange(e, setPagoTarjeta)}
                         onKeyDown={e => {
-                          if (e.key === "Enter" && parseFloat(pagoTarjeta) >= granTotal && !isProcessing) {
+                          if (e.key === "Enter" && parseCurrency(pagoTarjeta) >= granTotal && !isProcessing) {
                             e.preventDefault();
                             confirmarVenta();
                           }
                         }}
-                        className="w-full pl-14 pr-6 py-4 bg-white border-2 border-emerald-200 rounded-xl text-3xl font-semibold text-slate-900 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 outline-none transition-all text-center tracking-tighter"
+                        className="w-full pl-14 pr-6 py-4 bg-white border-2 border-indigo-200 rounded-xl text-3xl font-semibold text-slate-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all text-center tracking-tighter"
                         placeholder="0"
                       />
                     </div>
                     {pagoTarjeta !== "" && (
-                      <div className={`rounded-xl p-4 text-white text-center animate-in zoom-in duration-300 shadow-lg ${parseFloat(pagoTarjeta) >= granTotal
-                        ? 'bg-gradient-to-r from-emerald-500 to-green-500 shadow-emerald-200'
+                      <div className={`rounded-xl p-4 text-white text-center animate-in zoom-in duration-300 shadow-lg ${parseCurrency(pagoTarjeta) >= granTotal
+                        ? 'bg-gradient-to-r from-indigo-500 to-blue-500 shadow-indigo-200'
                         : 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-200'}`}>
                         <span className="text-[9px] font-semibold uppercase tracking-[0.2em] block opacity-90">{parseCurrency(pagoTarjeta) >= granTotal ? "Monto Completo" : "Diferencia con Total"}</span>
                         <span className="text-3xl font-semibold tracking-tighter block mt-1">{formatCOP(Math.abs(granTotal - parseCurrency(pagoTarjeta)))}</span>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {metodoPago === "Addi" && (
+                  <div className="bg-gradient-to-br from-violet-50 to-fuchsia-50 rounded-2xl p-8 border border-violet-100 text-center animate-in fade-in duration-300">
+                    <div className="w-16 h-16 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-violet-200">🏷️</div>
+                    <p className="text-sm font-semibold text-slate-800 mb-1">Crédito Addi</p>
+                    <p className="text-xs text-slate-500">Se registrará el pago digital por <span className="font-semibold text-violet-600">{formatCOP(granTotal - ((puntosARedimir || 0) * (configPuntos?.valor_punto ?? 1)))}</span></p>
                   </div>
                 )}
 
@@ -1525,10 +1623,10 @@ function Productos() {
               <div className="space-y-3 pt-2">
                 <button
                   onClick={() => confirmarVenta()}
-                  disabled={isProcessing || (metodoPago === "Mixto" && sumMixto < granTotal) || (metodoPago === "Efectivo" && (pagoCliente === "" || cashPaga < granTotal)) || (metodoPago === "Tarjeta" && (pagoTarjeta === "" || parseCurrency(pagoTarjeta) < granTotal))}
+                  disabled={isProcessing || (metodoPago === "Mixto" && sumMixto < granTotal) || (metodoPago === "Efectivo" && (pagoCliente === "" || cashPaga < granTotal)) || (metodoPago === "Tarjeta" && (pagoTarjeta === "" || parseCurrency(pagoTarjeta) < granTotal)) || (metodoPago === "Transferencia" && (pagoTransferencia === "" || parseCurrency(pagoTransferencia) < granTotal))}
                   className={`w-full py-3 rounded-2xl font-semibold text-sm uppercase tracking-wider shadow-xl transition-all duration-300 flex items-center justify-center gap-3 ${isProcessing
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    : ((metodoPago === "Mixto" && sumMixto >= granTotal) || (metodoPago === "Efectivo" && cashPaga >= granTotal) || (metodoPago === "Tarjeta" && parseCurrency(pagoTarjeta) >= granTotal))
+                    : ((metodoPago === "Mixto" && sumMixto >= granTotal) || (metodoPago === "Efectivo" && cashPaga >= granTotal) || (metodoPago === "Tarjeta" && parseCurrency(pagoTarjeta) >= granTotal) || (metodoPago === "Transferencia" && parseCurrency(pagoTransferencia) >= granTotal) || metodoPago === "Addi")
                       ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 text-white hover:shadow-2xl hover:shadow-blue-300 hover:-translate-y-0.5 active:translate-y-0 active:shadow-lg'
                       : 'bg-slate-100 text-slate-300 cursor-not-allowed'
                     }`}
@@ -1575,13 +1673,13 @@ function Productos() {
             <p className="text-slate-400 font-medium uppercase text-[9px] tracking-[0.2em] mb-8 italic">Transacción Registrada</p>
 
             {/* Reconciliation Detail */}
-            {(metodoPago === "Efectivo" && vuelto > 0) || (metodoPago === "Tarjeta" && pagoTarjeta !== "") || (metodoPago === "Mixto" && sumMixto > granTotal) ? (
+            {(metodoPago === "Efectivo" && vuelto > 0) || (metodoPago === "Tarjeta" && pagoTarjeta !== "") || (metodoPago === "Transferencia" && pagoTransferencia !== "") || (metodoPago === "Mixto" && sumMixto > granTotal) ? (
               <div className="bg-slate-50 rounded-[32px] p-6 mb-8 border border-slate-100 shadow-inner">
                 <span className="text-[8px] font-medium text-slate-400 uppercase tracking-[0.4em] block mb-2">
-                  {metodoPago === "Efectivo" ? "Efectivo Recibido" : metodoPago === "Tarjeta" ? "Cierre Tarjeta" : "Total Recaudado"}
+                  {metodoPago === "Efectivo" ? "Efectivo Recibido" : (metodoPago === "Tarjeta" ? "Cierre Tarjeta" : (metodoPago === "Transferencia" ? "Monto Transferido" : "Total Recaudado"))}
                 </span>
                 <strong className="text-4xl text-slate-900 font-medium italic tracking-tighter leading-none">
-                  {metodoPago === "Tarjeta" ? formatCOP(parseCurrency(pagoTarjeta)) : formatCOP(vuelto >= 0 ? vuelto : Math.max(0, sumMixto - granTotal))}
+                  {metodoPago === "Tarjeta" ? formatCOP(parseCurrency(pagoTarjeta)) : (metodoPago === "Transferencia" ? formatCOP(parseCurrency(pagoTransferencia)) : formatCOP(vuelto >= 0 ? vuelto : Math.max(0, sumMixto - granTotal)))}
                 </strong>
                 {vuelto > 0 && metodoPago === "Efectivo" && (
                   <span className="text-[8px] font-medium text-blue-600 uppercase tracking-widest block mt-3">Devolver Cambio</span>
@@ -1705,15 +1803,15 @@ function Productos() {
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest block ml-1">Método de Pago del Abono</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {["Efectivo", "Transferencia", "Mixto"].map((m) => (
+                  <div className="grid grid-cols-5 gap-2">
+                    {["Efectivo", "Transferencia", "Tarjeta", "Mixto", "Addi"].map((m) => (
                       <button
                         key={m}
                         onClick={() => setMetodoPagoAbono(m)}
-                        className={`py-3 rounded-2xl text-[10px] font-medium uppercase tracking-widest border-2 transition-all ${metodoPagoAbono === m ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-emerald-200'
+                        className={`py-3 rounded-2xl text-[10px] font-medium uppercase tracking-widest border-2 transition-all ${metodoPagoAbono === m ? 'bg-emerald-600 border-emerald-600 text-white shadow-lg scale-[1.02]' : 'bg-white border-slate-100 text-slate-400 hover:border-emerald-200'
                           }`}
                       >
-                        {m}
+                        {m === "Transferencia" ? "Transf." : m}
                       </button>
                     ))}
                   </div>

@@ -33,7 +33,9 @@ function Cajeros() {
     fecha_contrato: "",
     salario: "",
     paga_comisiones: false,
-    porcentaje_comision: "",
+    porcentaje_comision_base: "",
+    meta_comision: "",
+    porcentaje_comision_meta: "",
     username: "",
     password: "", 
     permisos: [] as string[],
@@ -80,7 +82,7 @@ function Cajeros() {
     setEditingId(null);
     setFormData({
       nombre: "", documento: "", telefono: "", direccion: "",
-      fecha_contrato: "", salario: "", paga_comisiones: false, porcentaje_comision: "",
+      fecha_contrato: "", salario: "", paga_comisiones: false, porcentaje_comision_base: "", meta_comision: "", porcentaje_comision_meta: "",
       username: "", password: "", permisos: [], role: "cajero"
     });
   };
@@ -106,7 +108,9 @@ function Cajeros() {
       fecha_contrato: c.fecha_contrato ? c.fecha_contrato.split('T')[0] : "",
       salario: c.salario || "",
       paga_comisiones: c.paga_comisiones === 1 || c.paga_comisiones === true,
-      porcentaje_comision: c.porcentaje_comision || "",
+      porcentaje_comision_base: c.porcentaje_comision_base || "",
+      meta_comision: c.meta_comision || "",
+      porcentaje_comision_meta: c.porcentaje_comision_meta || "",
       username: c.username || "",
       password: "", 
       permisos: parsedPermisos,
@@ -253,11 +257,28 @@ function Cajeros() {
                         </label>
                         
                         {formData.paga_comisiones && (
-                            <div className="animate-in slide-in-from-top-2 duration-300">
-                                <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1 block mb-2">% de Ganancia</label>
-                                <div className="relative">
-                                    <input type="number" step="0.1" name="porcentaje_comision" value={formData.porcentaje_comision} onChange={handleChange} className="w-full px-5 py-3 bg-white border border-emerald-200 rounded-2xl font-black text-emerald-700 outline-none" placeholder="0.0" />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-emerald-300">%</span>
+                            <div className="animate-in slide-in-from-top-2 duration-300 space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1 block mb-2">% Comisión Base (Inicial)</label>
+                                    <div className="relative">
+                                        <input type="number" step="0.1" name="porcentaje_comision_base" value={formData.porcentaje_comision_base} onChange={handleChange} className="w-full px-5 py-3 bg-white border border-emerald-200 rounded-2xl font-black text-emerald-700 outline-none" placeholder="Ej: 1.0" />
+                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-emerald-300">%</span>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                      <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1 block mb-2">Meta Ventas (Tope)</label>
+                                      <div className="relative">
+                                          <input type="number" name="meta_comision" value={formData.meta_comision} onChange={handleChange} className="w-full px-5 py-3 bg-white border border-emerald-200 rounded-2xl font-black text-emerald-700 outline-none" placeholder="Ej: 2000000" />
+                                      </div>
+                                  </div>
+                                  <div>
+                                      <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1 block mb-2">% Si supera tope</label>
+                                      <div className="relative">
+                                          <input type="number" step="0.1" name="porcentaje_comision_meta" value={formData.porcentaje_comision_meta} onChange={handleChange} className="w-full px-5 py-3 bg-white border border-emerald-200 rounded-2xl font-black text-emerald-700 outline-none" placeholder="Ej: 3.0" />
+                                          <span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-emerald-300">%</span>
+                                      </div>
+                                  </div>
                                 </div>
                             </div>
                         )}
@@ -315,7 +336,10 @@ function Cajeros() {
                                     </td>
                                     <td className="px-8 py-6 text-center">
                                         {c.paga_comisiones ? (
-                                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black border border-emerald-100 italic">Comisión {c.porcentaje_comision}%</span>
+                                            <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[9px] font-black border border-emerald-100 italic">
+                                                Comisión {c.porcentaje_comision_base}% 
+                                                {c.meta_comision > 0 ? ` ➔ ${c.porcentaje_comision_meta}%` : ''}
+                                            </span>
                                         ) : (
                                             <span className="px-3 py-1 bg-slate-50 text-slate-400 rounded-lg text-[9px] font-black border border-slate-100 italic">Fijo</span>
                                         )}

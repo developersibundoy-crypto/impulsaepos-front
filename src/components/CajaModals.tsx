@@ -257,9 +257,31 @@ export const CierreCajaModal: React.FC<{ isOpen: boolean; onClose: () => void; o
       zIndex: 9999,
     };
 
-  // --- Main Cierre Form ---
   const esperado = activeSesion.valor_esperado;
   const diferencia = reportado ? Number(reportado) - esperado : 0;
+
+  const handleWhatsApp = () => {
+    const admin = localStorage.getItem('adminName') || 'Cajero';
+    const txt = `*REPORTE DE CIERRE DE CAJA*
+Cajero: ${admin}
+Apertura: ${new Date(activeSesion.fecha_apertura).toLocaleString('es-CO')}
+Cierre: ${new Date().toLocaleString('es-CO')}
+------------------------
+Base Inicial: ${formatCOP(activeSesion.base_caja)}
+(+) Ventas Totales: ${formatCOP(activeSesion.total_ventas)}
+  - Efectivo: ${formatCOP(activeSesion.total_efectivo)}
+  - Transferencia: ${formatCOP(activeSesion.total_transferencia)}
+  - Tarjeta: ${formatCOP(activeSesion.total_tarjeta || 0)}
+  - Addi: ${formatCOP(activeSesion.total_addi || 0)}
+(+) Otros Ingresos: ${formatCOP(activeSesion.total_ingresos)}
+(-) Salidas/Gastos: ${formatCOP(activeSesion.total_salidas)}
+------------------------
+EFECTIVO ESPERADO: ${formatCOP(esperado)}
+EFECTIVO REPORTADO: ${formatCOP(Number(reportado) || 0)}
+DIFERENCIA: ${formatCOP(diferencia)}`;
+    
+    window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
+  };
 
   return createPortal(
     <>
@@ -327,12 +349,30 @@ export const CierreCajaModal: React.FC<{ isOpen: boolean; onClose: () => void; o
                 <div className="p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="w-6 h-6 bg-sky-500 rounded-lg flex items-center justify-center text-sm shadow-lg shadow-sky-900/40">📱</div>
-                    <p className="text-[7px] uppercase tracking-[0.2em] opacity-60 font-black">Digital</p>
+                    <p className="text-[7px] uppercase tracking-[0.2em] opacity-60 font-black">Transferencia</p>
                   </div>
                   <p className="text-xl font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_transferencia || 0)}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-5 mt-10 pt-8 border-t border-white/10">
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-5 h-5 bg-indigo-500 rounded-md flex items-center justify-center text-[10px] shadow-lg shadow-indigo-900/40">💳</div>
+                      <p className="text-[7px] uppercase tracking-[0.2em] opacity-60 font-black">Tarjeta</p>
+                    </div>
+                    <p className="text-lg font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_tarjeta || 0)}</p>
+                  </div>
+
+                  <div className="p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-5 h-5 bg-violet-500 rounded-md flex items-center justify-center text-[10px] shadow-lg shadow-violet-900/40">🏷️</div>
+                      <p className="text-[7px] uppercase tracking-[0.2em] opacity-60 font-black">Addi</p>
+                    </div>
+                    <p className="text-lg font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_addi || 0)}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-5 mt-6 pt-6 border-t border-white/10">
                   <div className="p-3 bg-indigo-500/20 rounded-2xl border border-white/5">
                     <p className="text-[8px] uppercase tracking-widest opacity-60 font-bold mb-1">Total Bruto</p>
                     <p className="text-sm font-black">{formatCOP(activeSesion.total_ventas || 0)}</p>
@@ -441,21 +481,29 @@ export const CierreCajaModal: React.FC<{ isOpen: boolean; onClose: () => void; o
                   )}
                 </button>
                 
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => reactToPrint()}
                     disabled={!reportado}
-                    className="flex-1 py-4 bg-white border-2 border-slate-200 text-slate-600 font-black rounded-2xl hover:bg-slate-50 transition-all text-[10px] uppercase tracking-widest flex items-center justify-center gap-2"
+                    className="flex-1 py-4 bg-white border-2 border-slate-200 text-slate-600 font-black rounded-2xl hover:bg-slate-50 transition-all text-[9px] uppercase tracking-widest flex items-center justify-center gap-1"
                   >
-                    🖨️ IMPRIMIR REPORTE
+                    🖨️ IMPRIMIR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleWhatsApp}
+                    disabled={!reportado}
+                    className="flex-1 py-4 bg-[#25D366] text-white font-black rounded-2xl hover:bg-[#1ebe57] transition-all text-[9px] uppercase tracking-widest flex items-center justify-center gap-1 shadow-md"
+                  >
+                    📱 WHATSAPP
                   </button>
                   <button
                     type="button"
                     onClick={onClose}
-                    className="flex-1 py-4 bg-slate-100 text-slate-400 font-black rounded-2xl hover:bg-rose-50 hover:text-rose-500 transition-all text-[10px] uppercase tracking-widest"
+                    className="flex-1 py-4 bg-slate-100 text-slate-400 font-black rounded-2xl hover:bg-rose-50 hover:text-rose-500 transition-all text-[9px] uppercase tracking-widest"
                   >
-                    CONTINUAR LUEGO
+                    POSPONER
                   </button>
                 </div>
                 
@@ -482,6 +530,8 @@ export const CierreCajaModal: React.FC<{ isOpen: boolean; onClose: () => void; o
                 total_ventas: activeSesion.total_ventas,
                 total_efectivo: activeSesion.total_efectivo,
                 total_transferencia: activeSesion.total_transferencia,
+                total_tarjeta: activeSesion.total_tarjeta || 0,
+                total_addi: activeSesion.total_addi || 0,
                 total_ingresos: activeSesion.total_ingresos,
                 total_salidas: activeSesion.total_salidas,
                 valor_esperado: activeSesion.valor_esperado,
