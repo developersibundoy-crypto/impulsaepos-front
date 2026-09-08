@@ -36,6 +36,8 @@ export default function Separados() {
   const [newClienteId, setNewClienteId] = useState("");
   const [clienteSearch, setClienteSearch] = useState("");
   const [mainClientSearch, setMainClientSearch] = useState("");
+  const [showAllActiveClients, setShowAllActiveClients] = useState(false);
+  const [activeClientsList, setActiveClientsList] = useState<any[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const selectedClienteRef = useRef<Cliente | null>(null);
   useEffect(() => {
@@ -56,7 +58,7 @@ export default function Separados() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [cajeros, setCajeros] = useState<any[]>([]);
-  const [cajeroId, setCajeroId] = useState(localStorage.getItem('adminCajeroId') || "");
+  const [cajeroId, setCajeroId] = useState(localStorage.getItem('adminCajeroId') || localStorage.getItem('posCajeroId') || "");
   const [phoneWS, setPhoneWS] = useState("");
 
   const viewSeparadoRef = useRef<any>(null);
@@ -144,14 +146,12 @@ export default function Separados() {
     if (!newClienteId) return alert("Selecciona un cliente");
     if (cart.length === 0) return alert("Agrega al menos un producto");
 
-    const total = cart.reduce((acc, c) => acc + (c.precio_venta * c.qty), 0);
+    const total = cart.reduce((acc, c) => acc + (c.precio_venta * (1 - (c.descuento || 0) / 100)) * c.qty, 0);
     const abono = parseFloat(initialPayment) || 0;
 
     if (abono > total) return alert("El abono inicial no puede ser mayor al total");
 
     try {
-      const total = cart.reduce((acc, c) => acc + (c.precio_venta * c.qty), 0);
-      const abono = parseFloat(initialPayment) || 0;
 
       if (isEditing && editingId) {
         await API.put(`/separados/${editingId}`, {
@@ -308,6 +308,34 @@ export default function Separados() {
 
   const removeFromCart = (id: number) => {
     setCart(cart.filter(x => x.id !== id));
+  };
+
+  const handleDescuentoChange = (id: number, val: string) => {
+    let desc = parseFloat(val);
+    if (isNaN(desc)) desc = 0;
+    if (desc < 0) desc = 0;
+    if (desc > 100) desc = 100;
+    setCart(cart.map(x => x.id === id ? { ...x, descuento: desc } : x));
+  };
+
+  const handlePrecioFinalManual = (item: any) => {
+    const precioActual = Math.round(item.precio_venta * (1 - (item.descuento || 0) / 100));
+    const nuevoPrecioStr = window.prompt(`Ingrese el precio final a cobrar por unidad para: ${item.nombre} \n(Valor actual: $${precioActual})`, precioActual.toString());
+    
+    if (nuevoPrecioStr !== null) {
+      const nuevoPrecio = parseFloat(nuevoPrecioStr.replace(/[^\d]/g, ''));
+      if (!isNaN(nuevoPrecio) && nuevoPrecio >= 0) {
+        if (nuevoPrecio > item.precio_venta) {
+            alert("⚠️ El precio final no puede ser mayor al precio original de venta.");
+            return;
+        }
+        // Calculate the exact discount percentage needed to reach the manual price
+        let pctDesc = ((item.precio_venta - nuevoPrecio) / item.precio_venta) * 100;
+        // In Javascript, doing a simple calculation like this is fine, but we'll round it to 4 decimals to avoid weird floating points if needed
+        // but for exact price matching, storing the full float is better.
+        setCart(cart.map(x => x.id === item.id ? { ...x, descuento: pctDesc } : x));
+      }
+    }
   };
 
   const openView = (id: number) => {
@@ -484,15 +512,52 @@ export default function Separados() {
 
         {!selectedCliente ? (
           <div className="max-w-3xl mx-auto space-y-6 pt-10">
-             <div className="relative group">
-                <span className="absolute left-8 top-1/2 -translate-y-1/2 text-blue-400 text-2xl">🔍</span>
-                <input
-                  type="text"
-                  placeholder="Escribe el nombre o documento del cliente..."
-                  value={mainClientSearch}
-                  onChange={e => setMainClientSearch(e.target.value)}
-                  className="w-full pl-20 pr-8 py-8 bg-white border-2 border-blue-50 rounded-[40px] text-slate-700 text-xl font-medium outline-none focus:border-blue-400 focus:ring-8 focus:ring-blue-50 transition-all shadow-[0_10px_40px_rgba(59,130,246,0.08)]"
-                />
+             <div className="flex gap-4">
+               <div className="relative group flex-1">
+                  <span className="absolute left-8 top-1/2 -translate-y-1/2 text-blue-400 text-2xl">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Escribe el nombre o documento del cliente..."
+                    value={mainClientSearch}
+                    onChange={e => {
+                        setMainClientSearch(e.target.value);
+                        setShowAllActiveClients(false);
+                    }}
+                    className="w-full pl-20 pr-8 py-8 bg-white border-2 border-blue-50 rounded-[40px] text-slate-700 text-xl font-medium outline-none focus:border-blue-400 focus:ring-8 focus:ring-blue-50 transition-all shadow-[0_10px_40px_rgba(59,130,246,0.08)]"
+                  />
+               </div>
+               <button 
+                  onClick={async () => {
+                      if (showAllActiveClients) {
+                          setShowAllActiveClients(false);
+                          return;
+                      }
+                      try {
+                          const res = await API.get("/separados");
+                          const uniqueClientsMap = new Map();
+                          res.data.forEach((s: any) => {
+                             if (!uniqueClientsMap.has(s.cliente_id) && s.estado !== "Anulado") {
+                                 uniqueClientsMap.set(s.cliente_id, {
+                                     id: s.cliente_id,
+                                     nombre: s.cliente_nombre,
+                                     documento: s.cliente_documento,
+                                     activos: 1
+                                 });
+                             } else if (uniqueClientsMap.has(s.cliente_id) && s.estado !== "Anulado") {
+                                 uniqueClientsMap.get(s.cliente_id).activos++;
+                             }
+                          });
+                          setActiveClientsList(Array.from(uniqueClientsMap.values()));
+                          setShowAllActiveClients(true);
+                          setMainClientSearch("");
+                      } catch(e) {
+                          console.error(e);
+                      }
+                  }}
+                  className="px-8 bg-gradient-to-br from-indigo-600 to-indigo-800 text-white rounded-[40px] font-black uppercase tracking-widest text-[11px] hover:-translate-y-1 transition-all shadow-[0_10px_30px_rgba(79,70,229,0.3)] shrink-0 flex items-center justify-center text-center leading-tight"
+                >
+                  Listar<br/>Separados
+                </button>
              </div>
              
              {mainClientSearch && (
@@ -517,6 +582,40 @@ export default function Separados() {
                  ).length === 0 && (
                     <div className="p-8 text-center text-slate-400 font-bold uppercase tracking-widest text-sm">
                       No se encontraron clientes
+                    </div>
+                 )}
+               </div>
+             )}
+
+             {showAllActiveClients && !mainClientSearch && (
+               <div className="bg-white rounded-[40px] border border-slate-100 shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-4 mt-6">
+                 <div className="p-6 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+                   <h3 className="text-sm font-black text-indigo-900 uppercase tracking-widest flex items-center gap-2">
+                     <span className="w-2 h-6 bg-indigo-600 rounded-full"></span> Clientes con Separados
+                   </h3>
+                   <span className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest px-4 py-1.5 bg-white border border-indigo-100 rounded-full shadow-sm">
+                     {activeClientsList.length} Clientes
+                   </span>
+                 </div>
+                 {activeClientsList.length > 0 ? activeClientsList.map(c => (
+                   <div key={c.id} onClick={() => { setSelectedCliente(c); setShowAllActiveClients(false); }} className="p-8 hover:bg-indigo-50/50 cursor-pointer border-b border-slate-50 flex items-center justify-between group transition-colors">
+                     <div>
+                       <div className="text-xl font-black text-slate-800 uppercase tracking-tight">{c.nombre || "Cliente Casual"}</div>
+                       <div className="text-sm font-bold text-slate-400 mt-1">DOC: {c.documento || "N/A"}</div>
+                     </div>
+                     <div className="flex items-center gap-4">
+                       <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-xl">
+                          {c.activos} Separado(s)
+                       </span>
+                       <span className="text-indigo-600 font-black uppercase tracking-widest text-[10px] px-6 py-3 bg-white border border-indigo-100 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                          Ver Módulo →
+                       </span>
+                     </div>
+                   </div>
+                 )) : (
+                    <div className="p-12 text-center">
+                      <div className="text-4xl mb-4 opacity-50">📂</div>
+                      <div className="text-slate-400 font-bold uppercase tracking-widest text-[11px]">No hay clientes con separados activos</div>
                     </div>
                  )}
                </div>
@@ -696,6 +795,29 @@ export default function Separados() {
                           <div className="text-[11px] font-bold text-blue-900 uppercase truncate">{c.nombre}</div>
                           <div className="text-[9px] text-blue-400 font-medium">{formatCOP(c.precio_venta)} c/u</div>
                         </div>
+                        
+                        <div className="flex items-center gap-3 mx-2">
+                          <div className="flex flex-col items-center">
+                            <label className="text-[8px] font-bold text-blue-400 uppercase">Desc %</label>
+                            <input
+                              type="number"
+                              value={c.descuento || 0}
+                              onChange={e => handleDescuentoChange(c.id, e.target.value)}
+                              className="w-12 px-1 py-0.5 text-center text-[10px] font-bold text-blue-700 bg-white border border-blue-200 rounded outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div 
+                             className="flex flex-col items-end cursor-pointer group px-2 py-1 bg-white border border-transparent rounded-lg hover:border-emerald-200 hover:bg-emerald-50 transition-colors"
+                             onDoubleClick={() => handlePrecioFinalManual(c)}
+                             title="Doble clic para ajustar el precio final cerrado"
+                          >
+                             <label className="text-[8px] font-bold text-emerald-500 uppercase group-hover:text-emerald-600 transition-colors cursor-pointer select-none">Total Venta</label>
+                             <div className="text-[11px] font-black text-emerald-600 group-hover:text-emerald-700 transition-colors select-none">
+                               {formatCOP(Math.round(c.precio_venta * (1 - (c.descuento || 0) / 100)) * c.qty)}
+                             </div>
+                          </div>
+                        </div>
+
                         <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-xl border border-blue-100 shadow-sm">
                           <button onClick={() => updateCartQty(c.id, -1)} className="w-5 h-5 flex items-center justify-center text-blue-400 hover:text-red-500 transition-colors text-xs font-black">－</button>
                           <input
@@ -725,7 +847,7 @@ export default function Separados() {
                     <div className="bg-blue-50/30 p-3 rounded-xl border border-blue-50">
                       <label className="text-[9px] font-bold text-blue-400 uppercase tracking-widest mb-1 block">Total Separado</label>
                       <div className="text-2xl font-black text-blue-900 tracking-tighter">
-                        {formatCOP(cart.reduce((a, c) => a + c.precio_venta * c.qty, 0))}
+                        {formatCOP(cart.reduce((a, c) => a + Math.round(c.precio_venta * (1 - (c.descuento || 0) / 100)) * c.qty, 0))}
                       </div>
                     </div>
                     <div className="bg-amber-50/30 p-3 rounded-xl border border-amber-50">
@@ -734,7 +856,7 @@ export default function Separados() {
                         type="number" 
                         value={initialPayment} 
                         onChange={e => {
-                          const total = cart.reduce((acc, c) => acc + (c.precio_venta * c.qty), 0);
+                          const total = cart.reduce((acc, c) => acc + Math.round(c.precio_venta * (1 - (c.descuento || 0) / 100)) * c.qty, 0);
                           const val = parseFloat(e.target.value) || 0;
                           if (val > total) {
                             setInitialPayment(total.toString());
@@ -770,9 +892,9 @@ export default function Separados() {
                   {!isEditing && (
                     <div className="space-y-3">
                       <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest ml-1">Forma de Pago del Abono</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {["Efectivo", "Transferencia", "Mixto"].map((m) => (
-                          <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100' : 'bg-white text-blue-400 border-blue-100 hover:border-blue-300'}`}>
+                      <div className="grid grid-cols-5 gap-2">
+                        {["Efectivo", "Transferencia", "Tarjeta", "Addi", "Mixto"].map((m) => (
+                          <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100' : 'bg-white text-blue-400 border-blue-100 hover:border-blue-300'}`}>
                             {m}
                           </button>
                         ))}
@@ -876,9 +998,9 @@ export default function Separados() {
                           </div>
                         </div>
                         <div className="space-y-4">
-                          <div className="grid grid-cols-3 gap-2">
-                            {["Efectivo", "Transferencia", "Mixto"].map((m) => (
-                              <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-lg text-[8px] font-bold uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-100 hover:border-amber-300'}`}>
+                          <div className="grid grid-cols-5 gap-1">
+                            {["Efectivo", "Transferencia", "Tarjeta", "Addi", "Mixto"].map((m) => (
+                              <button key={m} onClick={() => setMetodoPago(m)} className={`py-1.5 rounded-lg text-[7px] font-bold uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-100 hover:border-amber-300'}`}>
                                 {m}
                               </button>
                             ))}

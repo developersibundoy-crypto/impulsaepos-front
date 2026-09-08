@@ -882,7 +882,7 @@ function Reportes() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-12">
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-12">
                   {/* Abonos por Cajero */}
                   <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col hover:shadow-xl transition-shadow duration-500">
                     <div className="flex items-center justify-between mb-8">
@@ -923,6 +923,44 @@ function Reportes() {
                             ))
                           ) : (
                             <tr><td colSpan={3} className="py-12 text-center text-slate-300 italic text-xs tracking-widest">Sin abonos registrados.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Abonos por Categoría */}
+                  <div className="bg-white p-8 rounded-[40px] border border-slate-200 shadow-sm flex flex-col hover:shadow-xl transition-shadow duration-500">
+                    <div className="flex items-center justify-between mb-8">
+                      <div className="space-y-1">
+                        <h3 className="text-2xl text-slate-900 tracking-tight flex items-center gap-3">
+                          <span className="w-2.5 h-8 bg-amber-500 rounded-full"></span> Abonos por Categoría
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-x-auto custom-scrollbar">
+                      <table className="w-full text-left min-w-[300px]">
+                        <thead>
+                          <tr className="text-[11px] text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
+                            <th className="pb-4 pl-4">Categoría</th>
+                            <th className="pb-4 text-right pr-4">Recaudado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {abonosData.abonosPorCategoria && abonosData.abonosPorCategoria.length > 0 ? (
+                            abonosData.abonosPorCategoria.map((c: any, i: number) => (
+                              <tr key={i} className="group hover:bg-slate-50/80 transition-all duration-300">
+                                <td className="py-4 pl-4">
+                                  <span className="text-base text-slate-900 uppercase tracking-tight font-normal">{c.categoria}</span>
+                                </td>
+                                <td className="py-4 text-right pr-4">
+                                  <span className="text-xl text-amber-600 font-medium">{formatCOP(c.total)}</span>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr><td colSpan={2} className="py-12 text-center text-slate-300 italic text-xs tracking-widest">Sin categorías registradas.</td></tr>
                           )}
                         </tbody>
                       </table>
