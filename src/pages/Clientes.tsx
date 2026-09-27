@@ -115,7 +115,7 @@ function Clientes() {
 
     try {
       // Check for duplicates
-      const isDuplicate = clientes.some(c => c.documento === formData.documento && c.id !== editingId);
+      const isDuplicate = clientes.some(c => String(c.documento).trim() === String(formData.documento).trim() && c.id !== editingId);
       if (isDuplicate) {
         return alert("Ya existe un cliente con este número de documento.");
       }

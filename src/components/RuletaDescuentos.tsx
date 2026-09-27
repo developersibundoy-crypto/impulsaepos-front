@@ -274,10 +274,10 @@ export const RuletaDescuentos: React.FC<RuletaDescuentosProps> = ({ isOpen, onCl
       return;
     }
 
-    // Pick next client in order
-    const idx = currentIndex % disponibles.length;
+    // Pick random client
+    const idx = Math.floor(Math.random() * disponibles.length);
     const cliente = disponibles[idx];
-    setCurrentIndex(idx + 1);
+    setCurrentIndex(idx);
 
     setIsSpinning(true);
     setResultado(null);
@@ -288,8 +288,8 @@ export const RuletaDescuentos: React.FC<RuletaDescuentosProps> = ({ isOpen, onCl
       const data = res.data;
 
       // Animate the wheel
-      const sliceAngle = 360 / participantes.length;
-      const targetAngle = (participantes.length - idx) * sliceAngle;
+      const sliceAngle = 360 / disponibles.length;
+      const targetAngle = (disponibles.length - idx) * sliceAngle;
       const spins = Math.floor(Math.random() * 5) + 5;
       const randomOffset = (Math.random() * sliceAngle * 0.8) - (sliceAngle * 0.4);
       const finalRotation = rotation + (spins * 360) + targetAngle - (rotation % 360) + randomOffset;

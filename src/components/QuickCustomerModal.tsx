@@ -113,6 +113,15 @@ export function QuickCustomerModal({ isOpen, onClose, onCustomerCreated }: Quick
 
     setIsCreatingCustomer(true);
     try {
+      // Validar duplicado obteniendo los clientes actuales
+      const clientesResp = await API.get("/clientes");
+      const isDuplicate = clientesResp.data.some((c: any) => String(c.documento).trim() === String(formData.documento).trim());
+      
+      if (isDuplicate) {
+        setIsCreatingCustomer(false);
+        return alert("Ya existe un cliente registrado con este número de documento.");
+      }
+
       const dataToSubmit = { 
         ...formData, 
         correo: formData.correo.trim() === "" ? "nna" : formData.correo 

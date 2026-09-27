@@ -3,6 +3,7 @@ import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import { Proveedor, Borrador, ProductoIngresado } from "../types";
 import { QuickProveedorModal } from "../components/QuickProveedorModal";
+import { BarcodePrintModal } from "../components/BarcodePrintModal";
 
 interface FormDataState {
   referencia: string;
@@ -45,6 +46,8 @@ function IngresoProductos() {
   const [isSearching, setIsSearching] = useState(false);
   const [showSugerencias, setShowSugerencias] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [printProduct, setPrintProduct] = useState<any>(null);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   // Draft System State
   const [currentDraftId, setCurrentDraftId] = useState<number | null>(null);
@@ -92,11 +95,11 @@ function IngresoProductos() {
       es_servicio: !!p.es_servicio,
       permitir_venta_negativa: p.permitir_venta_negativa !== undefined ? !!p.permitir_venta_negativa : true,
       iva_porcentaje: p.iva_porcentaje || 0,
-      fecha_vencimiento: (p.fecha_vencimiento && typeof p.fecha_vencimiento === 'string') 
-        ? p.fecha_vencimiento.split('T')[0] 
+      fecha_vencimiento: (p.fecha_vencimiento && typeof p.fecha_vencimiento === 'string')
+        ? p.fecha_vencimiento.split('T')[0]
         : ""
     });
-    
+
     if (source === 'lote') {
       setMensajeEstado("📦 PRODUCTO EN LOTE ACTUAL");
     } else if (source === 'db') {
@@ -104,7 +107,7 @@ function IngresoProductos() {
     } else {
       setMensajeEstado("⚠️ CREAR NUEVO PRODUCTO");
     }
-    
+
     setTimeout(() => setMensajeEstado(""), 4000);
     lastSearchedRef.current = p.referencia || "";
   };
@@ -112,7 +115,7 @@ function IngresoProductos() {
   const buscarProductoPorReferencia = async (codigo: string) => {
     if (!codigo) return;
     const cleanCodigo = codigo.trim();
-    
+
     // 1. Prioridad: Buscar en el lote temporal (productosIngresados)
     const enLote = productosIngresados.find(p => p.referencia === cleanCodigo);
     if (enLote) {
@@ -180,8 +183,8 @@ function IngresoProductos() {
         try {
           // 1. Buscar en el lote temporal (Local)
           const localMatches = productosIngresados
-            .filter(p => 
-              (p.referencia && p.referencia.toLowerCase().includes(term)) || 
+            .filter(p =>
+              (p.referencia && p.referencia.toLowerCase().includes(term)) ||
               (p.nombre && p.nombre.toLowerCase().includes(term))
             )
             .map(p => ({ ...p, source: 'lote' }));
@@ -206,7 +209,7 @@ function IngresoProductos() {
         } finally {
           setIsSearching(false);
         }
-      }, 350); 
+      }, 350);
       return () => clearTimeout(delayDebounceFn);
     } else {
       setProductosDB([]);
@@ -322,7 +325,7 @@ function IngresoProductos() {
         const existingItem = updatedList[editIndex];
 
         // Comprobar si cambió alguna propiedad de configuración
-        const hasConfigChanged = 
+        const hasConfigChanged =
           existingItem.nombre !== nuevoProducto.nombre ||
           existingItem.categoria !== nuevoProducto.categoria ||
           parseFloat(String(existingItem.precio_compra)) !== parseFloat(String(nuevoProducto.precio_compra)) ||
@@ -347,7 +350,7 @@ function IngresoProductos() {
     } else {
       const existingIndex = productosIngresados.findIndex(p => {
         const isSameProduct = (p.referencia && p.referencia === nuevoProducto.referencia) ||
-                              (!p.referencia && p.nombre === nuevoProducto.nombre);
+          (!p.referencia && p.nombre === nuevoProducto.nombre);
         const isSamePrice = Number(p.precio_compra) === Number(nuevoProducto.precio_compra);
         return isSameProduct && isSamePrice;
       });
@@ -357,8 +360,8 @@ function IngresoProductos() {
         setProductosIngresados(prev => {
           const updatedList = [...prev];
           const existingItem = updatedList[existingIndex];
-          
-          const hasConfigChanged = 
+
+          const hasConfigChanged =
             existingItem.nombre !== nuevoProducto.nombre ||
             existingItem.categoria !== nuevoProducto.categoria ||
             parseFloat(String(existingItem.precio_compra)) !== parseFloat(String(nuevoProducto.precio_compra)) ||
@@ -405,7 +408,7 @@ function IngresoProductos() {
 
   const handleSaveDraft = async () => {
     if (productosIngresados.length === 0) return alert("Añade al menos un producto a la lista temporal.");
-    
+
     setIsSavingDraft(true);
     try {
       // 1. Identificar ítems que necesitan inyección de stock o actualización de configuración
@@ -413,7 +416,7 @@ function IngresoProductos() {
         const cantInyectada = p.cantidad_inyectada || 0;
         const delta = p.cantidad - cantInyectada;
         const configChanged = p.configChanged;
-        
+
         // Enviamos si hay delta de stock O si cambió alguna configuración y ya estaba inyectado (para actualizar la config)
         if (delta > 0 || configChanged || !p.inyectado) {
           return { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad };
@@ -464,7 +467,7 @@ function IngresoProductos() {
         const cantInyectada = p.cantidad_inyectada || 0;
         const delta = p.cantidad - cantInyectada;
         const configChanged = p.configChanged;
-        
+
         // Enviamos si hay delta de stock O si cambió alguna configuración y ya estaba inyectado (para actualizar la config)
         if (delta > 0 || configChanged || !p.inyectado) {
           return { ...p, delta: delta, cantidad: delta, cantidad_total: p.cantidad };
@@ -572,10 +575,10 @@ function IngresoProductos() {
       const confirm = window.confirm(`⚠️ Se han inyectado ${item.cantidad_inyectada} unidades al inventario. ¿Deseas descontarlas para eliminar el ítem?`);
       if (confirm) {
         try {
-          await API.post("/productos/revertir-stock", { 
-            referencia: item.referencia, 
-            nombre: item.nombre, 
-            cantidad: item.cantidad_inyectada 
+          await API.post("/productos/revertir-stock", {
+            referencia: item.referencia,
+            nombre: item.nombre,
+            cantidad: item.cantidad_inyectada
           });
           alert("✅ Stock revertido exitosamente.");
         } catch (e: any) {
@@ -602,7 +605,32 @@ function IngresoProductos() {
 
   const allItemsCompleted = productosIngresados.length > 0 && productosIngresados.every(p => (p.cantidad_inyectada || 0) >= p.cantidad);
 
+  const generarCodigoAutomatico = async () => {
+    // Generar un código único de 8 dígitos
+    const codigoGenerado = Math.floor(10000000 + Math.random() * 90000000).toString();
 
+    setIsSearching(true);
+    try {
+      // Verificar que no exista en DB
+      const res = await API.get(`/productos/buscar/${codigoGenerado}`);
+      // Si llega aquí, significa que existe, así que intentamos generar otro recursivamente
+      if (res.data) {
+        setIsSearching(false);
+        return generarCodigoAutomatico();
+      }
+    } catch (error: any) {
+      if (error.response && error.response.status === 404) {
+        // No existe (404), es decir, es un código libre y válido
+        setFormData(prev => ({ ...prev, referencia: codigoGenerado }));
+        setMensajeEstado("✨ CÓDIGO GENERADO AUTOMÁTICAMENTE");
+        setTimeout(() => setMensajeEstado(""), 3000);
+      } else {
+        console.error("Error validando código generado:", error);
+      }
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   return (
     <div className="flex flex-col lg:flex-row h-auto lg:h-[calc(100vh-120px)] gap-4 lg:gap-6 animate-in fade-in duration-700 overflow-y-auto lg:overflow-hidden">
@@ -728,7 +756,7 @@ function IngresoProductos() {
                       className="hidden"
                       id="upload-factura"
                     />
-                    <label 
+                    <label
                       htmlFor="upload-factura"
                       className={`w-full h-full flex items-center justify-center bg-white border ${archivoFactura ? 'border-emerald-400 text-emerald-600 shadow-sm' : 'border-slate-200 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'} rounded-xl cursor-pointer transition-all`}
                       title={nombreArchivo || "Cargar Factura (Opcional)"}
@@ -748,9 +776,8 @@ function IngresoProductos() {
                 <span className="w-1.5 h-4 bg-indigo-600 rounded-full"></span> Información del Artículo
               </h4>
               {mensajeEstado && (
-                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full animate-in slide-in-from-right-4 duration-300 ${
-                  mensajeEstado.includes("EXISTENTE") ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                }`}>
+                <span className={`text-[9px] font-black uppercase px-3 py-1 rounded-full animate-in slide-in-from-right-4 duration-300 ${mensajeEstado.includes("EXISTENTE") ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
                   {mensajeEstado}
                 </span>
               )}
@@ -801,24 +828,34 @@ function IngresoProductos() {
 
               <div className="space-y-1.5 flex-1 relative">
                 <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest ml-1">🔍 Código de Barras / SKU / Nombre — Autocompletado</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    name="referencia"
-                    autoComplete="off"
-                    value={formData.referencia}
-                    onChange={handleChange}
-                    onKeyDown={handleKeyDownReferencia}
-                    onBlur={() => setTimeout(() => setShowSugerencias(false), 200)}
-                    onFocus={() => formData.referencia.length >= 2 && setShowSugerencias(true)}
-                    placeholder="Escribe para buscar..."
-                    className="w-full px-5 py-2.5 bg-blue-50/40 border border-blue-200 rounded-xl font-black text-blue-700 outline-none focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm uppercase"
-                  />
-                  {isSearching && (
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                  )}
+                <div className="relative flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      name="referencia"
+                      autoComplete="off"
+                      value={formData.referencia}
+                      onChange={handleChange}
+                      onKeyDown={handleKeyDownReferencia}
+                      onBlur={() => setTimeout(() => setShowSugerencias(false), 200)}
+                      onFocus={() => formData.referencia.length >= 2 && setShowSugerencias(true)}
+                      placeholder="Escribe para buscar..."
+                      className="w-full px-5 py-2.5 bg-blue-50/40 border border-blue-200 rounded-xl font-black text-blue-700 outline-none focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all text-sm uppercase"
+                    />
+                    {isSearching && (
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={generarCodigoAutomatico}
+                    title="Generar código aleatorio único"
+                    className="w-[44px] shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl flex items-center justify-center transition-all border border-blue-200 shadow-sm text-lg"
+                  >
+                    🪄
+                  </button>
                 </div>
 
                 {/* Custom Suggestions Dropdown */}
@@ -912,11 +949,10 @@ function IngresoProductos() {
                   onChange={handleChange}
                   disabled={formData.es_servicio}
                   required={!formData.es_servicio}
-                  className={`w-full px-4 py-2.5 border rounded-xl font-black text-center text-sm transition-all ${
-                    formData.es_servicio 
-                      ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed' 
-                      : 'bg-slate-50 border-slate-200 text-slate-900 group-hover:bg-white'
-                  }`}
+                  className={`w-full px-4 py-2.5 border rounded-xl font-black text-center text-sm transition-all ${formData.es_servicio
+                    ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
+                    : 'bg-slate-50 border-slate-200 text-slate-900 group-hover:bg-white'
+                    }`}
                 />
                 {/* Indicador de Costo Total del Lote (cantidad × costo unitario) */}
                 {!formData.es_servicio && (parseFloat(String(formData.precio_compra)) || 0) > 0 && (parseInt(String(formData.cantidad), 10) || 0) > 0 && (
@@ -1017,7 +1053,7 @@ function IngresoProductos() {
                 type="submit"
                 className={`w-full py-3.5 ${editIndex !== null ? 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-amber-200 hover:from-amber-400 hover:to-amber-500 border-amber-500' : 'bg-gradient-to-r from-blue-600 to-blue-700 shadow-blue-200 hover:from-blue-500 hover:to-blue-600 border-blue-500'} text-white rounded-2xl font-black shadow-xl hover:-translate-y-1 active:scale-[0.98] transition-all uppercase tracking-[0.1em] text-[11px] flex items-center justify-center gap-3 group border`}
               >
-                <span className="text-xl group-hover:rotate-12 transition-transform">{editIndex !== null ? '📝' : '➕'}</span> 
+                <span className="text-xl group-hover:rotate-12 transition-transform">{editIndex !== null ? '📝' : '➕'}</span>
                 {editIndex !== null ? 'Guardar Cambios' : 'Cargar al Lote Temporal'}
               </button>
               {editIndex !== null && (
@@ -1067,10 +1103,10 @@ function IngresoProductos() {
           ) : (
             <div className="space-y-2.5">
               {productosIngresados.map((p, index) => (
-                <div 
-                  key={p.id_lote || index} 
+                <div
+                  key={p.id_lote || index}
                   onClick={() => handleEditItem(index)}
-                  className={`bg-white p-5 rounded-xl border ${editIndex === index ? 'border-amber-400 shadow-amber-100/50' : 'border-slate-200 hover:border-indigo-300 hover:shadow-indigo-100/50'} hover:shadow-2xl transition-all relative group/item animate-in fade-in slide-in-from-right-4 duration-500 cursor-pointer`} 
+                  className={`bg-white p-5 rounded-xl border ${editIndex === index ? 'border-amber-400 shadow-amber-100/50' : 'border-slate-200 hover:border-indigo-300 hover:shadow-indigo-100/50'} hover:shadow-2xl transition-all relative group/item animate-in fade-in slide-in-from-right-4 duration-500 cursor-pointer`}
                   style={{ animationDelay: `${index * 50}ms` }}
                 >
                   <div className="flex flex-col gap-4">
@@ -1080,7 +1116,7 @@ function IngresoProductos() {
                         <h4 className="text-[13px] font-black text-slate-800 uppercase tracking-tight leading-tight group-hover/item:text-indigo-600 transition-colors">
                           {p.nombre}
                         </h4>
-                        
+
                         {/* Status Badge */}
                         <div className="flex items-center gap-2 mt-1.5">
                           {p.cantidad_inyectada && p.cantidad_inyectada >= p.cantidad ? (
@@ -1101,13 +1137,28 @@ function IngresoProductos() {
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeItem(index); }}
-                        className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all flex items-center justify-center text-lg font-black border border-transparent hover:border-rose-100 shadow-sm shrink-0 -mt-2"
-                        title="Eliminar de la lista"
-                      >
-                        &times;
-                      </button>
+                      <div className="flex gap-2">
+                        {p.referencia && p.referencia.length > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPrintProduct(p);
+                              setShowPrintModal(true);
+                            }}
+                            className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-all flex items-center justify-center text-[16px] font-black border border-transparent hover:border-blue-100 shadow-sm shrink-0 -mt-2"
+                            title="Imprimir código de barras"
+                          >
+                            🖨️
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeItem(index); }}
+                          className="w-8 h-8 rounded-xl bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all flex items-center justify-center text-lg font-black border border-transparent hover:border-rose-100 shadow-sm shrink-0 -mt-2"
+                          title="Eliminar de la lista"
+                        >
+                          &times;
+                        </button>
+                      </div>
                     </div>
 
                     {/* Footer: Metadata and Total */}
@@ -1177,21 +1228,19 @@ function IngresoProductos() {
             <button
               onClick={handleSaveBatch}
               disabled={isSavingBatch || productosIngresados.length === 0}
-              className={`py-2.5 px-8 font-black rounded-xl shadow-lg transition-all disabled:opacity-30 disabled:grayscale uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 group min-w-[160px] ${
-                allItemsCompleted 
-                ? 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-emerald-900/40 border border-emerald-400 hover:scale-105' 
+              className={`py-2.5 px-8 font-black rounded-xl shadow-lg transition-all disabled:opacity-30 disabled:grayscale uppercase tracking-widest text-[8px] flex items-center justify-center gap-2 group min-w-[160px] ${allItemsCompleted
+                ? 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white shadow-emerald-900/40 border border-emerald-400 hover:scale-105'
                 : 'bg-gradient-to-br from-green-600 to-green-800 text-white shadow-green-900/20 hover:from-green-500 hover:to-green-700 hover:-translate-y-0.5'
-              }`}
+                }`}
             >
               {isSavingBatch ? "..." : (
                 <>
                   <span className="text-base group-hover:scale-110 transition-transform">
                     {allItemsCompleted ? "✨" : "✅"}
-                  </span> 
+                  </span>
                   {allItemsCompleted ? "Lote Completado" : "Finalizar"}
-                  <span className={`px-1.5 py-0.5 rounded-md text-[7px] border ${
-                    allItemsCompleted ? 'bg-white/30 border-white/20' : 'bg-white/20 border-white/10'
-                  }`}>
+                  <span className={`px-1.5 py-0.5 rounded-md text-[7px] border ${allItemsCompleted ? 'bg-white/30 border-white/20' : 'bg-white/20 border-white/10'
+                    }`}>
                     {productosIngresados.length}
                   </span>
                 </>
@@ -1214,6 +1263,11 @@ function IngresoProductos() {
           setProveedor(p.nombre_comercial);
           setShowQuickProveedorModal(false);
         }}
+      />
+      <BarcodePrintModal
+        isOpen={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        producto={printProduct || { nombre: '', referencia: '', precio_venta: 0 }}
       />
     </div>
   );
