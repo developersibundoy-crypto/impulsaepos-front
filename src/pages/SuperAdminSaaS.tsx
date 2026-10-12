@@ -4,6 +4,7 @@ import API from '../api/api';
 const SuperAdminSaaS = () => {
   const [empresas, setEmpresas] = useState<any[]>([]);
   const [pagos, setPagos] = useState<any[]>([]);
+  const [gastos, setGastos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [config, setConfig] = useState({
@@ -17,20 +18,89 @@ const SuperAdminSaaS = () => {
   });
   const [savingConfig, setSavingConfig] = useState(false);
 
+  // Estado para el modal y formulario de salida de dinero
+  const [showGastoModal, setShowGastoModal] = useState(false);
+  const [guardandoGasto, setGuardandoGasto] = useState(false);
+  const [comprobanteModalUrl, setComprobanteModalUrl] = useState<string | null>(null);
+  const [nuevoGasto, setNuevoGasto] = useState({
+    categoria: 'Hosting y Servidores',
+    descripcion: '',
+    monto: '',
+    fecha: new Date().toISOString().slice(0, 10),
+    metodo_pago: 'Transferencia',
+    comprobante_url: ''
+  });
+
   const fetchData = async () => {
     try {
-      const [resEmpresas, resPagos, resConfig] = await Promise.all([
+      const [resEmpresas, resPagos, resConfig, resGastos] = await Promise.all([
         API.get('/suscripciones/superadmin/empresas'),
         API.get('/suscripciones/superadmin/pagos'),
-        API.get('/suscripciones/superadmin/config')
+        API.get('/suscripciones/superadmin/config'),
+        API.get('/suscripciones/superadmin/gastos')
       ]);
-      setEmpresas(resEmpresas.data);
-      setPagos(resPagos.data);
+      setEmpresas(resEmpresas.data || []);
+      setPagos(resPagos.data || []);
       if (resConfig.data) setConfig(resConfig.data);
+      setGastos(resGastos.data || []);
       setLoading(false);
     } catch (err: any) {
       setError(err.response?.data?.error || 'No Autorizado o problema de conexión.');
       setLoading(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 8 * 1024 * 1024) {
+        alert("El archivo es muy pesado. El límite máximo es de 8MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNuevoGasto(prev => ({ ...prev, comprobante_url: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCrearGasto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevoGasto.categoria || !nuevoGasto.descripcion || !nuevoGasto.monto) {
+      alert("Por favor complete todos los campos obligatorios.");
+      return;
+    }
+    setGuardandoGasto(true);
+    try {
+      await API.post('/suscripciones/superadmin/gastos', nuevoGasto);
+      alert('✅ Salida de dinero registrada exitosamente.');
+      setShowGastoModal(false);
+      setNuevoGasto({
+        categoria: 'Hosting y Servidores',
+        descripcion: '',
+        monto: '',
+        fecha: new Date().toISOString().slice(0, 10),
+        metodo_pago: 'Transferencia',
+        comprobante_url: ''
+      });
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error al registrar la salida de dinero.');
+    } finally {
+      setGuardandoGasto(false);
+    }
+  };
+
+  const handleDeleteGasto = async (id: number, descripcion: string) => {
+    if (!window.confirm(`¿Desea eliminar la salida de dinero "${descripcion}"?`)) {
+      return;
+    }
+    try {
+      await API.delete(`/suscripciones/superadmin/gastos/${id}`);
+      await fetchData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Error al eliminar el gasto.');
     }
   };
 
@@ -99,23 +169,36 @@ const SuperAdminSaaS = () => {
   const trials = empresas.filter(e => e.estado === 'Trial').length;
   
   const totalHistorico = empresas.reduce((acc, emp) => acc + (Number(emp.total_recaudado) || 0), 0);
+  const totalGastosHistorico = gastos.reduce((acc, g) => acc + (Number(g.monto) || 0), 0);
+  const balanceNetoGlobal = totalHistorico - totalGastosHistorico;
 
   // Ingresos generados ESTE MES
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   const ingresosEsteMes = pagos.reduce((acc, pago) => {
-    // Si no hay fecha de pago en BD, asumimos todo al histórico. Para filtrar mejor la BD debe tener 'fecha_pago'
     if (pago.fecha_pago) {
       const fecha = new Date(pago.fecha_pago);
       if (fecha.getMonth() === currentMonth && fecha.getFullYear() === currentYear) {
          return acc + (Number(pago.monto) || 0);
       }
     } else {
-      // Fallback: Si no existe fecha_pago, sumamos todo o usamos asunción
       return acc + (Number(pago.monto) || 0);
     }
     return acc;
   }, 0);
+
+  // Gastos realizados ESTE MES
+  const gastosEsteMes = gastos.reduce((acc, gasto) => {
+    if (gasto.fecha) {
+      const fecha = new Date(gasto.fecha);
+      if (fecha.getMonth() === currentMonth && fecha.getFullYear() === currentYear) {
+        return acc + (Number(gasto.monto) || 0);
+      }
+    }
+    return acc;
+  }, 0);
+
+  const balanceNetoMes = ingresosEsteMes - gastosEsteMes;
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column' }}>
@@ -138,31 +221,78 @@ const SuperAdminSaaS = () => {
     <div className="fade-in" style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       <div style={{ background: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)', color: '#0f172a', padding: '2.5rem', borderRadius: '20px', marginBottom: '2.5rem', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: '-50%', right: '-10%', width: '300px', height: '300px', background: 'radial-gradient(circle, rgba(99,102,241,0.1) 0%, rgba(255,255,255,0) 70%)', borderRadius: '50%' }}></div>
-        <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '2.8rem', display: 'flex', alignItems: 'center', gap: '12px', fontWeight: '900', letterSpacing: '-0.5px' }}>
-          <span style={{ fontSize: '3rem', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))' }}>👑</span> 
-          <span style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Portal Maestro SaaS</span>
-        </h1>
-        <p style={{ color: '#64748b', fontSize: '1.2rem', margin: 0, fontWeight: '500' }}>Supervisión Global, Métricas y Cobranzas Directas</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '2.8rem', display: 'flex', alignItems: 'center', gap: '12px', fontWeight: '900', letterSpacing: '-0.5px' }}>
+              <span style={{ fontSize: '3rem', filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))' }}>👑</span> 
+              <span style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Portal Maestro SaaS</span>
+            </h1>
+            <p style={{ color: '#64748b', fontSize: '1.2rem', margin: 0, fontWeight: '500' }}>Supervisión Global, Métricas, Ingresos y Salidas de Dinero</p>
+          </div>
+          <button
+            onClick={() => setShowGastoModal(true)}
+            style={{
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: 'white',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: '14px',
+              fontWeight: '800',
+              cursor: 'pointer',
+              fontSize: '0.95rem',
+              boxShadow: '0 8px 20px rgba(239, 68, 68, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              transition: 'transform 0.2s',
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
+            onMouseOut={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+          >
+            <span>💸</span> Registrar Salida de Dinero
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
-        <div className="card" style={{ padding: '2rem', textAlign: 'center', background: 'white', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', borderBottom: '4px solid #10b981' }}>
-          <h3 style={{ margin: 0, color: '#64748b', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Comercios Activos</h3>
-          <p style={{ fontSize: '3.5rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#10b981', lineHeight: '1' }}>{activas}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
+        <div className="card" style={{ padding: '1.8rem', textAlign: 'center', background: 'white', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', borderBottom: '4px solid #10b981' }}>
+          <h3 style={{ margin: 0, color: '#64748b', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Comercios Activos</h3>
+          <p style={{ fontSize: '3rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#10b981', lineHeight: '1' }}>{activas}</p>
         </div>
-        <div className="card" style={{ padding: '2rem', textAlign: 'center', background: 'white', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', borderBottom: '4px solid #3b82f6' }}>
-          <h3 style={{ margin: 0, color: '#64748b', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>En Periodo Trial</h3>
-          <p style={{ fontSize: '3.5rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#3b82f6', lineHeight: '1' }}>{trials}</p>
+        <div className="card" style={{ padding: '1.8rem', textAlign: 'center', background: 'white', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', borderBottom: '4px solid #3b82f6' }}>
+          <h3 style={{ margin: 0, color: '#64748b', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>En Periodo Trial</h3>
+          <p style={{ fontSize: '3rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#3b82f6', lineHeight: '1' }}>{trials}</p>
         </div>
-        <div className="card" style={{ padding: '2rem', textAlign: 'center', background: 'white', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', borderBottom: '4px solid #ef4444' }}>
-          <h3 style={{ margin: 0, color: '#64748b', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>En Mora / Expirados</h3>
-          <p style={{ fontSize: '3.5rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#ef4444', lineHeight: '1' }}>{expiradas}</p>
+        <div className="card" style={{ padding: '1.8rem', textAlign: 'center', background: 'white', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', borderBottom: '4px solid #ef4444' }}>
+          <h3 style={{ margin: 0, color: '#64748b', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '1px' }}>En Mora / Expirados</h3>
+          <p style={{ fontSize: '3rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#ef4444', lineHeight: '1' }}>{expiradas}</p>
         </div>
-        <div className="card" style={{ padding: '2rem', textAlign: 'center', background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: '2px solid #22c55e' }}>
-          <h3 style={{ margin: 0, color: '#166534', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>Ingresos Este Mes</h3>
-          <p style={{ fontSize: '2.5rem', margin: '1rem 0 0', fontWeight: '800', color: '#15803d' }}>
-            ${ingresosEsteMes.toLocaleString('es-CO')}
+        <div className="card" style={{ padding: '1.8rem', textAlign: 'center', background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: '2px solid #22c55e' }}>
+          <h3 style={{ margin: 0, color: '#166534', fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>Ingresos Brutos Globales</h3>
+          <p style={{ fontSize: '2rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#15803d' }}>
+            ${totalHistorico.toLocaleString('es-CO')}
           </p>
+          <div style={{ fontSize: '0.8rem', color: '#166534', marginTop: '0.3rem' }}>
+            Este mes: ${ingresosEsteMes.toLocaleString('es-CO')}
+          </div>
+        </div>
+        <div className="card" style={{ padding: '1.8rem', textAlign: 'center', background: 'linear-gradient(135deg, #fff1f2, #ffe4e6)', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: '2px solid #f43f5e' }}>
+          <h3 style={{ margin: 0, color: '#9f1239', fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>Salidas / Gastos Totales</h3>
+          <p style={{ fontSize: '2rem', margin: '0.5rem 0 0', fontWeight: '800', color: '#e11d48' }}>
+            -${totalGastosHistorico.toLocaleString('es-CO')}
+          </p>
+          <div style={{ fontSize: '0.8rem', color: '#9f1239', marginTop: '0.3rem' }}>
+            Este mes: -${gastosEsteMes.toLocaleString('es-CO')}
+          </div>
+        </div>
+        <div className="card" style={{ padding: '1.8rem', textAlign: 'center', background: balanceNetoGlobal >= 0 ? 'linear-gradient(135deg, #eff6ff, #dbeafe)' : 'linear-gradient(135deg, #fef2f2, #fee2e2)', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', border: `2px solid ${balanceNetoGlobal >= 0 ? '#3b82f6' : '#ef4444'}` }}>
+          <h3 style={{ margin: 0, color: balanceNetoGlobal >= 0 ? '#1e40af' : '#991b1b', fontSize: '0.95rem', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: 'bold' }}>Total Global Neto (Caja)</h3>
+          <p style={{ fontSize: '2rem', margin: '0.5rem 0 0', fontWeight: '800', color: balanceNetoGlobal >= 0 ? '#2563eb' : '#dc2626' }}>
+            ${balanceNetoGlobal.toLocaleString('es-CO')}
+          </p>
+          <div style={{ fontSize: '0.8rem', color: balanceNetoGlobal >= 0 ? '#1e40af' : '#991b1b', marginTop: '0.3rem' }}>
+            Neto este mes: ${balanceNetoMes.toLocaleString('es-CO')}
+          </div>
         </div>
       </div>
 
@@ -272,9 +402,13 @@ const SuperAdminSaaS = () => {
 
         {/* Tabla Historial de Pagos */}
         <div className="card" style={{ background: 'white', padding: '2rem', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}>
-          <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <span>Historial Directo de Pagos💳</span>
-            <span style={{ fontSize: '1.2rem', color: '#64748b', fontWeight: 'bold' }}>Total Global: <span style={{ color: '#0f172a' }}>${totalHistorico.toLocaleString('es-CO')}</span></span>
+            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', fontSize: '1rem' }}>
+              <span style={{ color: '#64748b', fontWeight: 'bold' }}>Bruto: <span style={{ color: '#059669' }}>+${totalHistorico.toLocaleString('es-CO')}</span></span>
+              <span style={{ color: '#64748b', fontWeight: 'bold' }}>Gastos: <span style={{ color: '#dc2626' }}>-${totalGastosHistorico.toLocaleString('es-CO')}</span></span>
+              <span style={{ color: '#0f172a', fontWeight: '800', background: '#f1f5f9', padding: '4px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>Total Global Neto: ${balanceNetoGlobal.toLocaleString('es-CO')}</span>
+            </div>
           </h2>
           {pagos.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '12px' }}>
@@ -303,6 +437,143 @@ const SuperAdminSaaS = () => {
                       </td>
                       <td style={{ padding: '1rem', fontWeight: 'bold', color: '#059669', fontSize: '1.1rem' }}>
                         + ${(Number(pago.monto) || 0).toLocaleString('es-CO')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Tabla Salidas de Dinero (Gastos Operativos SaaS) */}
+        <div className="card" style={{ background: 'white', padding: '2rem', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h2 style={{ margin: 0, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>💸 Salidas de Dinero y Gastos SaaS</span>
+              </h2>
+              <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                Control de egresos por hosting, servidores, servicios y mantenimiento de la plataforma.
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <span style={{ fontSize: '1.1rem', color: '#64748b', fontWeight: 'bold' }}>
+                Total Gastos: <span style={{ color: '#dc2626' }}>-${totalGastosHistorico.toLocaleString('es-CO')}</span>
+              </span>
+              <button
+                onClick={() => setShowGastoModal(true)}
+                style={{
+                  background: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <span>➕</span> Nuevo Gasto
+              </button>
+            </div>
+          </div>
+
+          {gastos.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '12px' }}>
+              <p style={{ fontSize: '1.2rem', margin: 0 }}>No hay salidas de dinero registradas todavía.</p>
+              <p style={{ fontSize: '0.85rem', color: '#cbd5e1', marginTop: '6px' }}>
+                Haz clic en "Registrar Salida de Dinero" para ingresar pagos de hosting, nómina, dominios u otros servicios.
+              </p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="modern-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', color: '#475569', textAlign: 'left', fontSize: '0.95rem' }}>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>ID</th>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>Fecha</th>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>Categoría</th>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>Descripción</th>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>Método</th>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>Comprobante</th>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0' }}>Monto</th>
+                    <th style={{ padding: '1rem', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gastos.map(g => (
+                    <tr key={g.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.2s' }}>
+                      <td style={{ padding: '1rem', color: '#64748b', fontWeight: 'bold' }}>#{g.id}</td>
+                      <td style={{ padding: '1rem', color: '#475569', whiteSpace: 'nowrap' }}>
+                        {g.fecha ? new Date(g.fecha).toLocaleDateString() : 'N/A'}
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          fontSize: '0.75rem',
+                          fontWeight: '800',
+                          background: '#fef2f2',
+                          color: '#b91c1c',
+                          border: '1px solid #fecaca'
+                        }}>
+                          {g.categoria}
+                        </span>
+                      </td>
+                      <td style={{ padding: '1rem', color: '#0f172a', fontWeight: '500', maxWidth: '300px' }}>
+                        {g.descripcion}
+                      </td>
+                      <td style={{ padding: '1rem', color: '#64748b', fontSize: '0.85rem' }}>
+                        {g.metodo_pago || 'Transferencia'}
+                      </td>
+                      <td style={{ padding: '1rem' }}>
+                        {g.comprobante_url ? (
+                          <button
+                            onClick={() => setComprobanteModalUrl(g.comprobante_url)}
+                            style={{
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              padding: '5px 10px',
+                              borderRadius: '8px',
+                              fontSize: '0.75rem',
+                              fontWeight: 'bold',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <span>📎</span> Ver Soporte
+                          </button>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontStyle: 'italic' }}>Sin archivo</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '1rem', fontWeight: 'bold', color: '#dc2626', fontSize: '1.1rem', whiteSpace: 'nowrap' }}>
+                        - ${(Number(g.monto) || 0).toLocaleString('es-CO')}
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleDeleteGasto(g.id, g.descripcion)}
+                          style={{
+                            background: '#fee2e2',
+                            color: '#ef4444',
+                            border: '1px solid #fca5a5',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold'
+                          }}
+                          title="Eliminar registro"
+                        >
+                          🗑️
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -385,6 +656,295 @@ const SuperAdminSaaS = () => {
            </form>
         </div>
       </div>
+
+      {/* MODAL REGISTRAR SALIDA DE DINERO */}
+      {showGastoModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(6px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '24px',
+            maxWidth: '600px',
+            width: '100%',
+            padding: '2.5rem',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            border: '1px solid #e2e8f0'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.5rem', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>💸</span> Registrar Salida de Dinero
+                </h3>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                  Ingresa los detalles del gasto operativo de la plataforma
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGastoModal(false)}
+                style={{ background: '#f1f5f9', border: 'none', width: '36px', height: '36px', borderRadius: '10px', cursor: 'pointer', fontSize: '1.2rem', color: '#64748b', fontWeight: 'bold' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCrearGasto} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>
+                    Categoría *
+                  </label>
+                  <select
+                    value={nuevoGasto.categoria}
+                    onChange={(e) => setNuevoGasto({ ...nuevoGasto, categoria: e.target.value })}
+                    style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                  >
+                    <option value="Hosting y Servidores">Hosting y Servidores</option>
+                    <option value="Dominios y SSL">Dominios y SSL</option>
+                    <option value="Servicios en la Nube / DB">Servicios en la Nube / DB</option>
+                    <option value="Pasarela de Pagos / Comisiones">Pasarela de Pagos / Comisiones</option>
+                    <option value="Marketing y Publicidad">Marketing y Publicidad</option>
+                    <option value="Desarrollo y Mantenimiento">Desarrollo y Mantenimiento</option>
+                    <option value="Otros Gastos Operativos">Otros Gastos Operativos</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>
+                    Fecha del Pago *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={nuevoGasto.fecha}
+                    onChange={(e) => setNuevoGasto({ ...nuevoGasto, fecha: e.target.value })}
+                    style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>
+                    Monto ($ COP) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    required
+                    placeholder="Ej: 150000"
+                    value={nuevoGasto.monto}
+                    onChange={(e) => setNuevoGasto({ ...nuevoGasto, monto: e.target.value })}
+                    style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none', fontWeight: 'bold' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>
+                    Método de Pago
+                  </label>
+                  <select
+                    value={nuevoGasto.metodo_pago}
+                    onChange={(e) => setNuevoGasto({ ...nuevoGasto, metodo_pago: e.target.value })}
+                    style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none' }}
+                  >
+                    <option value="Transferencia">Transferencia Bancaria</option>
+                    <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="PayPal">PayPal</option>
+                    <option value="Otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>
+                  Descripción / Beneficiario *
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Ej: Pago mensual de VPS Hostinger / Pago de API OpenAI"
+                  value={nuevoGasto.descripcion}
+                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, descripcion: e.target.value })}
+                  style={{ padding: '0.75rem', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '0.9rem', outline: 'none', resize: 'vertical' }}
+                />
+              </div>
+
+              {/* CARGA DE COMPROBANTE */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase' }}>
+                  Comprobante de Pago (Factura / Recibo / Captura)
+                </label>
+                <div style={{
+                  border: '2px dashed #cbd5e1',
+                  borderRadius: '12px',
+                  padding: '1.2rem',
+                  textAlign: 'center',
+                  background: '#f8fafc',
+                  position: 'relative'
+                }}>
+                  {nuevoGasto.comprobante_url ? (
+                    <div>
+                      <p style={{ margin: '0 0 8px 0', color: '#16a34a', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                        ✅ Archivo cargado correctamente
+                      </p>
+                      {nuevoGasto.comprobante_url.startsWith('data:image') && (
+                        <img
+                          src={nuevoGasto.comprobante_url}
+                          alt="Previsualización"
+                          style={{ maxHeight: '120px', borderRadius: '8px', margin: '0 auto 8px', display: 'block', objectFit: 'contain' }}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setNuevoGasto({ ...nuevoGasto, comprobante_url: '' })}
+                        style={{ background: '#fee2e2', color: '#dc2626', border: 'none', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Quitar comprobante
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
+                        Arrastra o selecciona un archivo (PDF o Imagen, máx 8MB)
+                      </p>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={handleFileChange}
+                        style={{ marginTop: '8px', fontSize: '0.8rem' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowGastoModal(false)}
+                  style={{ background: '#f1f5f9', color: '#64748b', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardandoGasto}
+                  style={{
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    padding: '10px 24px',
+                    borderRadius: '10px',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+                    opacity: guardandoGasto ? 0.6 : 1
+                  }}
+                >
+                  {guardandoGasto ? 'Guardando...' : '💾 Guardar Salida de Dinero'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PREVISUALIZAR COMPROBANTE */}
+      {comprobanteModalUrl && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.85)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10000,
+          padding: '1.5rem'
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '20px',
+            maxWidth: '850px',
+            width: '100%',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+          }}>
+            <div style={{ padding: '1rem 1.5rem', background: '#0f172a', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>📎 Comprobante de Salida de Dinero</h3>
+              <button
+                onClick={() => setComprobanteModalUrl(null)}
+                style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '1.3rem', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px', background: '#f8fafc' }}>
+              {comprobanteModalUrl.startsWith('data:application/pdf') ? (
+                <iframe
+                  src={comprobanteModalUrl}
+                  title="Comprobante PDF"
+                  style={{ width: '100%', height: '550px', border: 'none', borderRadius: '8px' }}
+                />
+              ) : (
+                <img
+                  src={comprobanteModalUrl}
+                  alt="Comprobante"
+                  style={{ maxWidth: '100%', maxHeight: '550px', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
+                />
+              )}
+            </div>
+            <div style={{ padding: '0.8rem 1.5rem', background: 'white', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>
+              <a
+                href={comprobanteModalUrl}
+                download="comprobante_gasto_saas"
+                style={{
+                  background: '#2563eb',
+                  color: 'white',
+                  textDecoration: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  display: 'inline-block',
+                  marginRight: '8px'
+                }}
+              >
+                ⬇️ Descargar
+              </a>
+              <button
+                onClick={() => setComprobanteModalUrl(null)}
+                style={{ background: '#e2e8f0', color: '#475569', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

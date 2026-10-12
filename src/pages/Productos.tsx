@@ -117,6 +117,7 @@ function Productos() {
   const [facturaIdImpresion, setFacturaIdImpresion] = useState<number | null>(null);
   const [itemsParaRecibo, setItemsParaRecibo] = useState<CartItem[]>([]);
   const [totalesRecibo, setTotalesRecibo] = useState<any>(null);
+  const [clienteParaRecibo, setClienteParaRecibo] = useState<string>("Cliente general");
   const trMixtoRef = useRef<HTMLInputElement>(null);
 
   // Quick Customer Registration
@@ -648,7 +649,7 @@ function Productos() {
         }),
         metodoPago,
         efectivoEntregado: metodoPago === "Mixto" ? efMixto : cashPaga,
-        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Transferencia" ? parseCurrency(pagoTransferencia) : (metodoPago === "Tarjeta" ? parseCurrency(pagoTarjeta) : (metodoPago === "Addi" ? totalConDescuentoPuntos : 0))),
+        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Transferencia" ? parseCurrency(pagoTransferencia) : (metodoPago === "Tarjeta" ? parseCurrency(pagoTarjeta) : ((metodoPago === "Addi" || metodoPago === "Sistecredito") ? totalConDescuentoPuntos : 0))),
         vuelto: metodoPago === "Efectivo" && vuelto > 0 ? vuelto : 0,
         cajeroId: cajeroId ? parseInt(cajeroId) : null,
         clienteId: clienteId ? parseInt(clienteId) : null,
@@ -656,6 +657,8 @@ function Productos() {
         iva: totalIva
       });
       setFacturaIdImpresion(response.data.factura_id);
+      const clienteVentaNombre = clienteSearch && clienteSearch.trim() !== "" ? clienteSearch : (clientes.find(c => c.id.toString() === clienteId)?.nombre || "Cliente general");
+      setClienteParaRecibo(clienteVentaNombre);
       setItemsParaRecibo(carrito.map(i => {
         const discountedPrice = Math.round(i.precio_venta * (1 - (i.descuento || 0) / 100));
         return {
@@ -764,7 +767,7 @@ function Productos() {
     // 2. Info de Venta
     const saleInfo = `📄 *Factura No: ${facturaIdImpresion}*\n` +
       `📅 Fecha: ${new Date().toLocaleString('es-CO')}\n` +
-      `👤 Cliente: ${clienteSearch || 'Consumidor Final'}\n` +
+      `👤 Cliente: ${clienteParaRecibo || 'Consumidor Final'}\n` +
       (cajeroSeleccionado?.nombre ? `👤 Vendedor: ${cajeroSeleccionado.nombre}\n` : "") +
       `--------------------------------\n`;
 
@@ -1408,7 +1411,7 @@ function Productos() {
               {/* Método de Pago - Botones vibrantes */}
               <div className="space-y-3">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.15em] block text-center">Selecciona el Método de Pago</label>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {/* Efectivo - Azul */}
                   <button
                     onClick={() => setMetodoPago("Efectivo")}
@@ -1462,6 +1465,17 @@ function Productos() {
                   >
                     <span className="text-xl group-hover:scale-110 transition-transform">🏷️</span>
                     <span className="text-[9px] font-semibold uppercase tracking-wider">Addi</span>
+                  </button>
+
+                  {/* Sistecrédito - Esmeralda/Cyan */}
+                  <button
+                    onClick={() => setMetodoPago("Sistecredito")}
+                    className={`group flex flex-col items-center gap-2 py-3 rounded-2xl border-2 transition-all duration-300 ${metodoPago === "Sistecredito"
+                      ? 'bg-gradient-to-b from-cyan-600 to-cyan-700 border-cyan-500 text-white shadow-lg shadow-cyan-200 scale-105'
+                      : 'bg-cyan-50 border-cyan-100 text-cyan-500 hover:border-cyan-300 hover:bg-cyan-100 hover:scale-[1.02]'}`}
+                  >
+                    <span className="text-xl group-hover:scale-110 transition-transform">⚡</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider">Sistecredito</span>
                   </button>
                 </div>
               </div>
@@ -1569,6 +1583,14 @@ function Productos() {
                   </div>
                 )}
 
+                {metodoPago === "Sistecredito" && (
+                  <div className="bg-gradient-to-br from-cyan-50 to-teal-50 rounded-2xl p-8 border border-cyan-100 text-center animate-in fade-in duration-300">
+                    <div className="w-16 h-16 bg-gradient-to-br from-cyan-500 to-teal-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-cyan-200">⚡</div>
+                    <p className="text-sm font-semibold text-slate-800 mb-1">Crédito Sistecrédito</p>
+                    <p className="text-xs text-slate-500">Se registrará el pago a través de Sistecrédito por <span className="font-semibold text-cyan-600">{formatCOP(granTotal - ((puntosARedimir || 0) * (configPuntos?.valor_punto ?? 1)))}</span></p>
+                  </div>
+                )}
+
                 {metodoPago === "Mixto" && (
                   <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-6 border border-orange-100 space-y-4 animate-in fade-in duration-300">
                     <div className="grid grid-cols-2 gap-4">
@@ -1626,7 +1648,7 @@ function Productos() {
                   disabled={isProcessing || (metodoPago === "Mixto" && sumMixto < granTotal) || (metodoPago === "Efectivo" && (pagoCliente === "" || cashPaga < granTotal)) || (metodoPago === "Tarjeta" && (pagoTarjeta === "" || parseCurrency(pagoTarjeta) < granTotal)) || (metodoPago === "Transferencia" && (pagoTransferencia === "" || parseCurrency(pagoTransferencia) < granTotal))}
                   className={`w-full py-3 rounded-2xl font-semibold text-sm uppercase tracking-wider shadow-xl transition-all duration-300 flex items-center justify-center gap-3 ${isProcessing
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    : ((metodoPago === "Mixto" && sumMixto >= granTotal) || (metodoPago === "Efectivo" && cashPaga >= granTotal) || (metodoPago === "Tarjeta" && parseCurrency(pagoTarjeta) >= granTotal) || (metodoPago === "Transferencia" && parseCurrency(pagoTransferencia) >= granTotal) || metodoPago === "Addi")
+                    : ((metodoPago === "Mixto" && sumMixto >= granTotal) || (metodoPago === "Efectivo" && cashPaga >= granTotal) || (metodoPago === "Tarjeta" && parseCurrency(pagoTarjeta) >= granTotal) || (metodoPago === "Transferencia" && parseCurrency(pagoTransferencia) >= granTotal) || metodoPago === "Addi" || metodoPago === "Sistecredito")
                       ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 text-white hover:shadow-2xl hover:shadow-blue-300 hover:-translate-y-0.5 active:translate-y-0 active:shadow-lg'
                       : 'bg-slate-100 text-slate-300 cursor-not-allowed'
                     }`}
@@ -1726,7 +1748,7 @@ function Productos() {
             empresa={empresa}
             numero={facturaIdImpresion}
             fecha={new Date()}
-            cliente={clienteSearch}
+            cliente={clienteParaRecibo}
             cajero={cajeroSeleccionado?.nombre || "Vendedor"}
             metodoPago={totalesRecibo?.metodoPago || metodoPago}
             items={itemsParaRecibo}
@@ -1803,8 +1825,8 @@ function Productos() {
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest block ml-1">Método de Pago del Abono</label>
-                  <div className="grid grid-cols-5 gap-2">
-                    {["Efectivo", "Transferencia", "Tarjeta", "Mixto", "Addi"].map((m) => (
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {["Efectivo", "Transferencia", "Tarjeta", "Mixto", "Addi", "Sistecredito"].map((m) => (
                       <button
                         key={m}
                         onClick={() => setMetodoPagoAbono(m)}

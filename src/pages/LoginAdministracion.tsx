@@ -26,6 +26,7 @@ function LoginAdministracion({ onLoginSuccess }: LoginAdministracionProps) {
         localStorage.setItem('adminToken', response.data.token);
         localStorage.setItem('adminUser', response.data.username);
         localStorage.setItem('adminRole', response.data.role);
+        localStorage.setItem('adminEmpresaId', String(response.data.empresa_id || '1'));
         
         if (onLoginSuccess) {
           onLoginSuccess();

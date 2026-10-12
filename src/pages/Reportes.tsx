@@ -707,6 +707,10 @@ function Reportes() {
                                     <span className="text-[8px] text-slate-400 uppercase tracking-widest">Addi:</span>
                                     <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_addi)}</span>
                                   </div>
+                                  <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[8px] text-slate-400 uppercase tracking-widest">Sistecredito:</span>
+                                    <span className="text-[10px] text-slate-700 font-normal">{formatCOP(c.dinero_sistecredito)}</span>
+                                  </div>
                                   <div className="flex flex-col items-end gap-0.5 px-2 py-1 bg-indigo-50 border border-indigo-100 rounded-xl w-full">
                                     <div className="flex items-center gap-1.5">
                                       <span className="text-[8px] text-indigo-400 uppercase tracking-widest">Mixto:</span>

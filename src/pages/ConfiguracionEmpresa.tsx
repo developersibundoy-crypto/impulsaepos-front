@@ -17,7 +17,8 @@ function ConfiguracionEmpresa() {
     municipio_codigo: "05001",
     departamento_codigo: "05",
     ciudad: "Medellín",
-    matricula_mercantil: ""
+    matricula_mercantil: "",
+    dias_alerta_vencimiento: 30
   });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -41,7 +42,8 @@ function ConfiguracionEmpresa() {
                 municipio_codigo: res.data.municipio_codigo || "05001",
                 departamento_codigo: res.data.departamento_codigo || "05",
                 ciudad: res.data.ciudad || "Medellín",
-                matricula_mercantil: res.data.matricula_mercantil || ""
+                matricula_mercantil: res.data.matricula_mercantil || "",
+                dias_alerta_vencimiento: res.data.dias_alerta_vencimiento !== undefined && res.data.dias_alerta_vencimiento !== null ? Number(res.data.dias_alerta_vencimiento) : 30
               });
         }
       })
@@ -307,6 +309,29 @@ function ConfiguracionEmpresa() {
                         />
                     </div>
 
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-medium text-slate-400 uppercase tracking-widest ml-1">
+                                📅 Días de Anticipación para Alertas de Vencimiento (IA)
+                            </label>
+                            <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-0.5 rounded-full font-bold">
+                                {formData.dias_alerta_vencimiento || 30} días
+                            </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 italic ml-1">
+                            El sistema generará alertas de productos próximos a vencer cuando falten igual o menos de estos días.
+                        </p>
+                        <input 
+                            type="number" 
+                            name="dias_alerta_vencimiento" 
+                            min="1" 
+                            max="730" 
+                            value={formData.dias_alerta_vencimiento} 
+                            onChange={handleChange} 
+                            className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-800 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all text-sm" 
+                            placeholder="Ej: 30"
+                        />
+                    </div>
 
                     <button type="submit" disabled={loading} className={`w-full py-5 rounded-[28px] font-medium transition-all uppercase tracking-widest text-xs shadow-2xl ${
                         success ? 'bg-emerald-600 text-white shadow-emerald-100' : 'bg-slate-900 text-white hover:bg-slate-800 hover:-translate-y-1'

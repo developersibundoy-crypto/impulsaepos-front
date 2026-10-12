@@ -273,6 +273,7 @@ Base Inicial: ${formatCOP(activeSesion.base_caja)}
   - Transferencia: ${formatCOP(activeSesion.total_transferencia)}
   - Tarjeta: ${formatCOP(activeSesion.total_tarjeta || 0)}
   - Addi: ${formatCOP(activeSesion.total_addi || 0)}
+  - Sistecredito: ${formatCOP(activeSesion.total_sistecredito || 0)}
 (+) Otros Ingresos: ${formatCOP(activeSesion.total_ingresos)}
 (-) Salidas/Gastos: ${formatCOP(activeSesion.total_salidas)}
 ------------------------
@@ -354,21 +355,29 @@ DIFERENCIA: ${formatCOP(diferencia)}`;
                   <p className="text-xl font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_transferencia || 0)}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div className="p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
-                    <div className="flex items-center gap-2 mb-1">
+                <div className="grid grid-cols-3 gap-2 mt-3">
+                  <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-1.5 mb-1">
                       <div className="w-5 h-5 bg-indigo-500 rounded-md flex items-center justify-center text-[10px] shadow-lg shadow-indigo-900/40">💳</div>
                       <p className="text-[7px] uppercase tracking-[0.2em] opacity-60 font-black">Tarjeta</p>
                     </div>
-                    <p className="text-lg font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_tarjeta || 0)}</p>
+                    <p className="text-sm font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_tarjeta || 0)}</p>
                   </div>
 
-                  <div className="p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
-                    <div className="flex items-center gap-2 mb-1">
+                  <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-1.5 mb-1">
                       <div className="w-5 h-5 bg-violet-500 rounded-md flex items-center justify-center text-[10px] shadow-lg shadow-violet-900/40">🏷️</div>
                       <p className="text-[7px] uppercase tracking-[0.2em] opacity-60 font-black">Addi</p>
                     </div>
-                    <p className="text-lg font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_addi || 0)}</p>
+                    <p className="text-sm font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_addi || 0)}</p>
+                  </div>
+
+                  <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <div className="w-5 h-5 bg-cyan-500 rounded-md flex items-center justify-center text-[10px] shadow-lg shadow-cyan-900/40">⚡</div>
+                      <p className="text-[7px] uppercase tracking-[0.2em] opacity-60 font-black">Sistecredito</p>
+                    </div>
+                    <p className="text-sm font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_sistecredito || 0)}</p>
                   </div>
                 </div>
 
@@ -532,6 +541,7 @@ DIFERENCIA: ${formatCOP(diferencia)}`;
                 total_transferencia: activeSesion.total_transferencia,
                 total_tarjeta: activeSesion.total_tarjeta || 0,
                 total_addi: activeSesion.total_addi || 0,
+                total_sistecredito: activeSesion.total_sistecredito || 0,
                 total_ingresos: activeSesion.total_ingresos,
                 total_salidas: activeSesion.total_salidas,
                 valor_esperado: activeSesion.valor_esperado,

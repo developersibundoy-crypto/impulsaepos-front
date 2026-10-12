@@ -11,7 +11,14 @@ function PrediccionesAI() {
   const [resumen, setResumen] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [proximosVencer, setProximosVencer] = useState<any[]>([]);
+  const [loadingVenc, setLoadingVenc] = useState(false);
   
+  // Estado para días configurables de alerta de vencimiento
+  const [diasAlerta, setDiasAlerta] = useState<number>(30);
+  const [inputDias, setInputDias] = useState<string>("30");
+  const [guardandoDefault, setGuardandoDefault] = useState<boolean>(false);
+  const [mensajeGuardado, setMensajeGuardado] = useState<string>("");
+
   // Refs for navigation
   const sectionCantidadesRef = useRef<HTMLDivElement>(null);
   const sectionVencimientosRef = useRef<HTMLDivElement>(null);
@@ -28,18 +35,72 @@ function PrediccionesAI() {
 
   const fetchData = async () => {
     try {
+      // 1. Cargar predicciones generales
       const res = await API.get("/ai/predicciones");
       setTendenciaGeneral(res.data.tendenciaGeneral);
       setRankingIA(res.data.analisisInteligente);
       setResumen(res.data.resumenEjecutivo);
+
+      // 2. Cargar configuración de días de alerta de la empresa
+      let diasConfigurados = 30;
+      try {
+        const resConfig = await API.get("/ai/config-vencimiento");
+        if (resConfig.data?.dias_alerta_vencimiento) {
+          diasConfigurados = Number(resConfig.data.dias_alerta_vencimiento);
+        }
+      } catch (cfgErr) {
+        // Fallback a 30 días
+      }
+
+      setDiasAlerta(diasConfigurados);
+      setInputDias(String(diasConfigurados));
       
-      const resVencimientos = await API.get("/reportes/proximos-vencer");
-      setProximosVencer(resVencimientos.data);
+      // 3. Cargar productos por vencer con los días configurados
+      const resVencimientos = await API.get(`/reportes/proximos-vencer?dias=${diasConfigurados}`);
+      setProximosVencer(resVencimientos.data || []);
       
       setLoading(false);
     } catch (error) {
       console.error("Error cargando motor de IA", error);
       setLoading(false);
+    }
+  };
+
+  const handleConsultarDias = async (dias: number) => {
+    if (isNaN(dias) || dias <= 0) return;
+    setLoadingVenc(true);
+    setDiasAlerta(dias);
+    setInputDias(String(dias));
+    setCurrentPageVenc(1);
+    try {
+      const resVencimientos = await API.get(`/reportes/proximos-vencer?dias=${dias}`);
+      setProximosVencer(resVencimientos.data || []);
+    } catch (err) {
+      console.error("Error al consultar vencimientos:", err);
+    } finally {
+      setLoadingVenc(false);
+    }
+  };
+
+  const handleGuardarDefaultDias = async () => {
+    const num = parseInt(inputDias, 10);
+    if (isNaN(num) || num <= 0) {
+      alert("Por favor ingrese un número válido de días (mayor a 0).");
+      return;
+    }
+    setGuardandoDefault(true);
+    setMensajeGuardado("");
+    try {
+      await API.post("/ai/config-vencimiento", { dias: num });
+      setDiasAlerta(num);
+      setMensajeGuardado("✅ Guardado como predeterminado");
+      setTimeout(() => setMensajeGuardado(""), 4000);
+      handleConsultarDias(num);
+    } catch (err) {
+      console.error("Error guardando días predeterminados:", err);
+      alert("Error al guardar la preferencia de días.");
+    } finally {
+      setGuardandoDefault(false);
     }
   };
 
@@ -237,90 +298,193 @@ function PrediccionesAI() {
       ) : (
         <div className="space-y-12">
           
-          {/* NEW SECTION: IA PREDICTIVE ANALYSIS (EXPIRATION ALERTS) */}
-          {proximosVencer.length > 0 && (
-            <div ref={sectionVencimientosRef} className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 p-10 rounded-[48px] shadow-2xl relative overflow-hidden group scroll-mt-10">
-               <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 group-hover:bg-indigo-500/20 transition-all duration-1000"></div>
-               <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
-               
-               <div className="relative z-10 flex flex-col xl:flex-row gap-10">
-                  <div className="xl:w-1/3 space-y-6">
-                     <span className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/20 text-indigo-300 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-indigo-400/20 animate-pulse">
-                        <span className="w-2 h-2 bg-indigo-400 rounded-full"></span> IA & Análisis Predictivo
-                     </span>
-                     <h2 className="text-4xl font-black text-white leading-tight">Alertas de <span className="text-indigo-400">Vencimiento</span> Próximo</h2>
-                     <p className="text-indigo-200/60 font-medium">Nuestro motor de análisis ha detectado productos que requieren rotación inmediata. Planifica promociones para evitar pérdidas de inventario.</p>
-                     
-                     <div className="grid grid-cols-2 gap-4 pt-4 text-center">
-                        <div className="bg-white/5 p-4 rounded-3xl border border-white/10 backdrop-blur-sm">
-                           <div className="text-3xl font-black text-white">{proximosVencer.length}</div>
-                           <div className="text-[9px] text-indigo-300 uppercase font-black mt-1">Alertas Críticas</div>
-                        </div>
-                        <div className="bg-white/5 p-4 rounded-3xl border border-white/10 backdrop-blur-sm">
-                           <div className="text-3xl font-black text-white">{Math.min(...proximosVencer.map(p => p.dias_faltantes))}d</div>
-                           <div className="text-[9px] text-indigo-300 uppercase font-black mt-1">Vencimiento más Cercano</div>
-                        </div>
-                     </div>
+          {/* SECTION: IA PREDICTIVE ANALYSIS (EXPIRATION ALERTS - CONFIGURABLE DAYS) */}
+          <div ref={sectionVencimientosRef} className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 p-8 md:p-10 rounded-[48px] shadow-2xl relative overflow-hidden group scroll-mt-10">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 group-hover:bg-indigo-500/20 transition-all duration-1000 pointer-events-none"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -ml-20 -mb-20 pointer-events-none"></div>
+              
+              <div className="relative z-10 flex flex-col xl:flex-row gap-10">
+                <div className="xl:w-1/3 space-y-6">
+                    <span className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/20 text-indigo-300 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-indigo-400/20 animate-pulse">
+                      <span className="w-2 h-2 bg-indigo-400 rounded-full"></span> IA & Análisis Predictivo
+                    </span>
+                    <h2 className="text-4xl font-black text-white leading-tight">Alertas de <span className="text-indigo-400">Vencimiento</span> Próximo</h2>
+                    <p className="text-indigo-200/60 font-medium text-sm">
+                      Configure manualmente los días de anticipación con los que desea detectar productos a vencer para planificar promociones o rotación.
+                    </p>
 
-                     <button 
-                        onClick={handleDownloadVencimientos}
-                        className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-emerald-900/20 flex items-center justify-center gap-3 active:scale-95 italic"
-                     >
-                        <span>📥</span> Descargar Reporte para Cambios (.xlsx)
-                     </button>
-                  </div>
+                    {/* CONTROL MANUAL DE DÍAS DE ANTICIPACIÓN */}
+                    <div className="bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-md space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">
+                          ⏰ Días de Anticipación
+                        </label>
+                        <span className="px-3 py-1 bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 rounded-xl text-xs font-black">
+                          {diasAlerta} días
+                        </span>
+                      </div>
 
-                  <div className="flex-1 space-y-3">
-                     {proximosVencer.slice((currentPageVenc - 1) * itemsPerPageVenc, currentPageVenc * itemsPerPageVenc).map((p, idx) => (
-                        <div key={idx} className="bg-white/5 p-5 rounded-[2rem] border border-white/10 flex items-center justify-between group/item hover:bg-white/10 transition-all">
-                           <div className="flex items-center gap-6">
-                              <div className="w-12 h-12 bg-indigo-600/30 rounded-2xl flex items-center justify-center text-xl text-indigo-300 border border-indigo-500/30">📅</div>
-                              <div>
-                                 <h4 className="text-white font-black uppercase tracking-tight text-sm">{p.nombre}</h4>
-                                 <span className="text-indigo-300/40 text-[10px] font-bold block mt-0.5 uppercase tracking-widest">{p.referencia} • {p.categoria}</span>
-                              </div>
-                           </div>
-                           <div className="flex items-center gap-8">
-                              <div className="text-right">
-                                 <span className="text-[9px] font-black text-white/40 uppercase block mb-1">Stock Disponible</span>
-                                 <p className="text-white font-black text-lg">{p.cantidad} <span className="text-xs opacity-50 font-medium">UND</span></p>
-                              </div>
-                              <div className={`px-5 py-2 rounded-2xl flex flex-col items-center justify-center border ${
-                                 p.dias_faltantes < 10 ? 'bg-rose-500/20 border-rose-500/30 text-rose-400' : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
-                              }`}>
-                                 <span className="text-[9px] font-black uppercase mb-0.5">Vence en</span>
-                                 <p className="text-xl font-black leading-none">{p.dias_faltantes} <span className="text-[10px]">días</span></p>
-                              </div>
-                           </div>
-                        </div>
-                     ))}
+                      {/* Presets rápidos */}
+                      <div className="flex flex-wrap gap-2">
+                        {[15, 30, 45, 60, 90, 180].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => handleConsultarDias(d)}
+                            className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${
+                              diasAlerta === d
+                                ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/30'
+                                : 'bg-white/5 text-indigo-200 hover:bg-white/10 border border-white/5'
+                            }`}
+                          >
+                            {d}d
+                          </button>
+                        ))}
+                      </div>
 
-                     {/* Pagination Vencimientos */}
-                     {proximosVencer.length > itemsPerPageVenc && (
-                        <div className="flex items-center justify-center gap-4 pt-4">
-                           <button 
-                              disabled={currentPageVenc === 1}
-                              onClick={() => setCurrentPageVenc(p => p - 1)}
-                              className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white disabled:opacity-20 hover:bg-white/10 transition-all border border-white/10"
-                           >
-                              ←
-                           </button>
-                           <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">
-                              Página {currentPageVenc} de {Math.ceil(proximosVencer.length / itemsPerPageVenc)}
-                           </span>
-                           <button 
-                              disabled={currentPageVenc >= Math.ceil(proximosVencer.length / itemsPerPageVenc)}
-                              onClick={() => setCurrentPageVenc(p => p + 1)}
-                              className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white disabled:opacity-20 hover:bg-white/10 transition-all border border-white/10"
-                           >
-                              →
-                           </button>
+                      {/* Input manual libre */}
+                      <div className="space-y-2 pt-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="730"
+                            value={inputDias}
+                            onChange={(e) => setInputDias(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleConsultarDias(parseInt(inputDias, 10));
+                              }
+                            }}
+                            className="w-full px-4 py-2.5 bg-slate-900/80 border border-indigo-400/30 rounded-2xl text-white font-bold text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20"
+                            placeholder="Ej: 30"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleConsultarDias(parseInt(inputDias, 10))}
+                            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap shadow-md"
+                          >
+                            Filtrar
+                          </button>
                         </div>
-                     )}
-                  </div>
-               </div>
-            </div>
-          )}
+                        <p className="text-[10px] text-indigo-300/60 italic">
+                          Fije de manera libre cuántos días antes de vencer desea ver las alertas.
+                        </p>
+                      </div>
+
+                      {/* Botón para guardar como predeterminado de la empresa */}
+                      <div className="pt-2 border-t border-white/10">
+                        <button
+                          type="button"
+                          disabled={guardandoDefault}
+                          onClick={handleGuardarDefaultDias}
+                          className="w-full py-2.5 bg-white/10 hover:bg-white/15 text-indigo-200 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-white/10 disabled:opacity-50"
+                        >
+                          <span>💾</span> {guardandoDefault ? "Guardando..." : "Fijar como predeterminado"}
+                        </button>
+                        {mensajeGuardado && (
+                          <p className="text-[10px] text-emerald-400 font-bold text-center mt-2 animate-in fade-in">
+                            {mensajeGuardado}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Estadísticas */}
+                    <div className="grid grid-cols-2 gap-4 text-center">
+                      <div className="bg-white/5 p-4 rounded-3xl border border-white/10 backdrop-blur-sm">
+                          <div className="text-3xl font-black text-white">{proximosVencer.length}</div>
+                          <div className="text-[9px] text-indigo-300 uppercase font-black mt-1">Alertas en {diasAlerta}d</div>
+                      </div>
+                      <div className="bg-white/5 p-4 rounded-3xl border border-white/10 backdrop-blur-sm">
+                          <div className="text-3xl font-black text-white">
+                            {proximosVencer.length > 0 ? `${Math.min(...proximosVencer.map(p => p.dias_faltantes))}d` : '-'}
+                          </div>
+                          <div className="text-[9px] text-indigo-300 uppercase font-black mt-1">Vencimiento más Cercano</div>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleDownloadVencimientos}
+                      disabled={proximosVencer.length === 0}
+                      className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:pointer-events-none text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-emerald-900/20 flex items-center justify-center gap-3 active:scale-95 italic"
+                    >
+                      <span>📥</span> Descargar Reporte ({proximosVencer.length} productos)
+                    </button>
+                </div>
+
+                <div className="flex-1 space-y-3">
+                    {loadingVenc ? (
+                      <div className="py-24 text-center flex flex-col items-center gap-4">
+                        <div className="w-10 h-10 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Calculando alertas para {diasAlerta} días...</span>
+                      </div>
+                    ) : proximosVencer.length === 0 ? (
+                      <div className="bg-white/5 p-12 rounded-[2.5rem] border border-white/10 text-center space-y-4 my-auto">
+                        <div className="text-5xl">🎉</div>
+                        <h3 className="text-xl font-bold text-white">Sin productos próximos a vencer</h3>
+                        <p className="text-indigo-200/70 text-sm max-w-md mx-auto">
+                          No se encontraron productos con fecha de vencimiento dentro de los próximos <strong className="text-white">{diasAlerta} días</strong>.
+                        </p>
+                        <p className="text-indigo-300/50 text-xs">
+                          Si desea anticiparse con mayor margen, aumente los días en el panel de la izquierda (por ejemplo, 60 o 90 días).
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {proximosVencer.slice((currentPageVenc - 1) * itemsPerPageVenc, currentPageVenc * itemsPerPageVenc).map((p, idx) => (
+                          <div key={idx} className="bg-white/5 p-5 rounded-[2rem] border border-white/10 flex items-center justify-between group/item hover:bg-white/10 transition-all">
+                              <div className="flex items-center gap-6">
+                                <div className="w-12 h-12 bg-indigo-600/30 rounded-2xl flex items-center justify-center text-xl text-indigo-300 border border-indigo-500/30">📅</div>
+                                <div>
+                                    <h4 className="text-white font-black uppercase tracking-tight text-sm">{p.nombre}</h4>
+                                    <span className="text-indigo-300/40 text-[10px] font-bold block mt-0.5 uppercase tracking-widest">
+                                      {p.referencia || 'SIN REF'} • {p.categoria || 'GENERAL'} {p.fecha_vencimiento ? `• Vence: ${new Date(p.fecha_vencimiento).toLocaleDateString()}` : ''}
+                                    </span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-8">
+                                <div className="text-right">
+                                    <span className="text-[9px] font-black text-white/40 uppercase block mb-1">Stock Disponible</span>
+                                    <p className="text-white font-black text-lg">{p.cantidad} <span className="text-xs opacity-50 font-medium">UND</span></p>
+                                </div>
+                                <div className={`px-5 py-2 rounded-2xl flex flex-col items-center justify-center border ${
+                                    p.dias_faltantes < 10 ? 'bg-rose-500/20 border-rose-500/30 text-rose-400' : 'bg-amber-500/20 border-amber-500/30 text-amber-400'
+                                }`}>
+                                    <span className="text-[9px] font-black uppercase mb-0.5">Vence en</span>
+                                    <p className="text-xl font-black leading-none">{p.dias_faltantes} <span className="text-[10px]">días</span></p>
+                                </div>
+                              </div>
+                          </div>
+                        ))}
+
+                        {/* Pagination Vencimientos */}
+                        {proximosVencer.length > itemsPerPageVenc && (
+                          <div className="flex items-center justify-center gap-4 pt-4">
+                              <button 
+                                disabled={currentPageVenc === 1}
+                                onClick={() => setCurrentPageVenc(p => p - 1)}
+                                className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white disabled:opacity-20 hover:bg-white/10 transition-all border border-white/10"
+                              >
+                                ←
+                              </button>
+                              <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">
+                                Página {currentPageVenc} de {Math.ceil(proximosVencer.length / itemsPerPageVenc)}
+                              </span>
+                              <button 
+                                disabled={currentPageVenc >= Math.ceil(proximosVencer.length / itemsPerPageVenc)}
+                                onClick={() => setCurrentPageVenc(p => p + 1)}
+                                className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white disabled:opacity-20 hover:bg-white/10 transition-all border border-white/10"
+                              >
+                                →
+                              </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                </div>
+              </div>
+          </div>
           
           <div className="bg-white p-6 md:p-10 rounded-[48px] border border-slate-100 shadow-sm relative overflow-hidden group">
              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">

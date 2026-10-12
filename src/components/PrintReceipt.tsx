@@ -38,6 +38,7 @@ interface PrintReceiptProps {
     total_transferencia: number;
     total_tarjeta?: number;
     total_addi?: number;
+    total_sistecredito?: number;
     total_ingresos: number;
     total_salidas: number;
     valor_esperado: number;
@@ -134,6 +135,10 @@ const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
             <div className="flex justify-between text-xs text-violet-700">
               <span className="pl-2">Addi:</span>
               <span>{formatCOP(cierreData.total_addi || 0)}</span>
+            </div>
+            <div className="flex justify-between text-xs text-cyan-700">
+              <span className="pl-2">Sistecredito:</span>
+              <span>{formatCOP(cierreData.total_sistecredito || 0)}</span>
             </div>
             <div className="flex justify-between text-xs text-emerald-600">
               <span>(+) Otros Ingresos:</span>

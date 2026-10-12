@@ -476,7 +476,7 @@ function VentasMayoristas() {
         items: discountedCart,
         metodoPago,
         efectivoEntregado: metodoPago === "Mixto" ? efMixto : (metodoPago === "Efectivo" ? cashPaga : 0),
-        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Tarjeta" || metodoPago === "Transferencia" || metodoPago === "Addi" ? totalConDescuentoPuntos : 0),
+        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Tarjeta" || metodoPago === "Transferencia" || metodoPago === "Addi" || metodoPago === "Sistecredito" ? totalConDescuentoPuntos : 0),
         vuelto: vuelto > 0 ? vuelto : 0,
         cajeroId: cajeroId ? parseInt(cajeroId) : null,
         clienteId: clienteId ? parseInt(clienteId) : null,
@@ -1212,7 +1212,7 @@ function VentasMayoristas() {
               {/* Método de Pago - Botones vibrantes */}
               <div className="space-y-3">
                 <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-[0.15em] block text-center">Selecciona el Método de Pago</label>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                   {/* Efectivo - Azul */}
                   <button
                     onClick={() => setMetodoPago("Efectivo")}
@@ -1266,6 +1266,17 @@ function VentasMayoristas() {
                   >
                     <span className="text-xl group-hover:scale-110 transition-transform">🏷️</span>
                     <span className="text-[9px] font-semibold uppercase tracking-wider">Addi</span>
+                  </button>
+
+                  {/* Sistecrédito - Cyan */}
+                  <button
+                    onClick={() => setMetodoPago("Sistecredito")}
+                    className={`group flex flex-col items-center gap-2 py-3 rounded-2xl border-2 transition-all duration-300 ${metodoPago === "Sistecredito"
+                      ? 'bg-gradient-to-b from-cyan-600 to-cyan-700 border-cyan-500 text-white shadow-lg shadow-cyan-200 scale-105'
+                      : 'bg-cyan-50 border-cyan-100 text-cyan-500 hover:border-cyan-300 hover:bg-cyan-100 hover:scale-[1.02]'}`}
+                  >
+                    <span className="text-xl group-hover:scale-110 transition-transform">⚡</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wider">Sistecredito</span>
                   </button>
                 </div>
               </div>
@@ -1371,6 +1382,14 @@ function VentasMayoristas() {
                     <div className="w-16 h-16 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-violet-200">🏷️</div>
                     <p className="text-sm font-semibold text-slate-800 mb-1">Crédito Addi</p>
                     <p className="text-xs text-slate-500">Se registrará el pago digital por <span className="font-semibold text-violet-600">{formatCOP(granTotal)}</span></p>
+                  </div>
+                )}
+
+                {metodoPago === "Sistecredito" && (
+                  <div className="bg-gradient-to-br from-cyan-50 to-teal-50 rounded-2xl p-8 border border-cyan-100 text-center animate-in fade-in duration-300">
+                    <div className="w-16 h-16 bg-gradient-to-br from-cyan-500 to-teal-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-lg shadow-cyan-200">⚡</div>
+                    <p className="text-sm font-semibold text-slate-800 mb-1">Crédito Sistecrédito</p>
+                    <p className="text-xs text-slate-500">Se registrará el pago digital por <span className="font-semibold text-cyan-600">{formatCOP(granTotal)}</span></p>
                   </div>
                 )}
               </div>

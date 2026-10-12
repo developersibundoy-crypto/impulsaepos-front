@@ -315,7 +315,7 @@ function FacturacionElectronica() {
         iva: totalIva,
         vuelto: (metodoPago === "Efectivo" && vuelto > 0) ? vuelto : 0,
         efectivoEntregado: metodoPago === "Mixto" ? efMixto : (metodoPago === "Efectivo" ? cashPaga : 0),
-        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : (metodoPago === "Transferencia" ? granTotal : 0),
+        transferenciaEntregada: metodoPago === "Mixto" ? trMixto : ((metodoPago === "Transferencia" || metodoPago === "Sistecredito") ? granTotal : 0),
         cajeroId: cajeroId ? parseInt(cajeroId) : null,
         clienteId: parseInt(clienteId),
         notas: "Facturación Electrónica DIAN"
@@ -737,7 +737,7 @@ function FacturacionElectronica() {
             </div>
 
             <div className="px-8 py-8 space-y-6">
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <button
                   onClick={() => setMetodoPago("Efectivo")}
                   className={`group flex flex-col items-center gap-2 py-3 rounded-2xl border-2 transition-all ${metodoPago === "Efectivo"
@@ -764,6 +764,15 @@ function FacturacionElectronica() {
                 >
                   <span className="text-xl">🔀</span>
                   <span className="text-[9px] font-semibold uppercase">Mixto</span>
+                </button>
+                <button
+                  onClick={() => setMetodoPago("Sistecredito")}
+                  className={`group flex flex-col items-center gap-2 py-3 rounded-2xl border-2 transition-all ${metodoPago === "Sistecredito"
+                    ? 'bg-cyan-600 border-cyan-500 text-white shadow-lg'
+                    : 'bg-slate-50 border-slate-100 text-slate-400 hover:border-cyan-200'}`}
+                >
+                  <span className="text-xl">⚡</span>
+                  <span className="text-[9px] font-semibold uppercase">Sistecredito</span>
                 </button>
               </div>
 
@@ -806,6 +815,14 @@ function FacturacionElectronica() {
                     <span className="text-4xl mb-2">🏦</span>
                     <p className="text-xs font-semibold text-indigo-600 uppercase tracking-widest italic leading-tight">Transferencia Electrónica Directa</p>
                     <p className="text-[10px] text-slate-400 mt-2 uppercase italic font-medium">Se reportará el total a la DIAN como pago digitalizado</p>
+                  </div>
+                )}
+
+                {metodoPago === "Sistecredito" && (
+                  <div className="bg-cyan-50 rounded-2xl p-8 border border-cyan-100 flex flex-col items-center justify-center text-center animate-in fade-in">
+                    <span className="text-4xl mb-2">⚡</span>
+                    <p className="text-xs font-semibold text-cyan-600 uppercase tracking-widest italic leading-tight">Crédito Sistecrédito</p>
+                    <p className="text-[10px] text-slate-400 mt-2 uppercase italic font-medium">Se reportará el total de la factura a la DIAN como medio de pago a crédito digital</p>
                   </div>
                 )}
               </div>
