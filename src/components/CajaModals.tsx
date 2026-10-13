@@ -274,10 +274,11 @@ Base Inicial: ${formatCOP(activeSesion.base_caja)}
   - Tarjeta: ${formatCOP(activeSesion.total_tarjeta || 0)}
   - Addi: ${formatCOP(activeSesion.total_addi || 0)}
   - Sistecredito: ${formatCOP(activeSesion.total_sistecredito || 0)}
-(+) Otros Ingresos: ${formatCOP(activeSesion.total_ingresos)}
+${Number(activeSesion.total_abonos_separados || 0) > 0 ? `(+) Abonos Separados: ${formatCOP(activeSesion.total_abonos_separados)}\n` : ''}${Number(activeSesion.total_devoluciones_separados || 0) > 0 ? `(-) Devoluciones Separados: ${formatCOP(activeSesion.total_devoluciones_separados)}\n` : ''}(+) Otros Ingresos: ${formatCOP(activeSesion.total_ingresos)}
 (-) Salidas/Gastos: ${formatCOP(activeSesion.total_salidas)}
 ------------------------
 EFECTIVO ESPERADO: ${formatCOP(esperado)}
+${activeSesion.conciliacion_pendiente ? 'CUADRE PROVISIONAL: históricos pendientes de conciliación. Consulte Facturas / Abonos.' : ''}
 EFECTIVO REPORTADO: ${formatCOP(Number(reportado) || 0)}
 DIFERENCIA: ${formatCOP(diferencia)}`;
     
@@ -380,6 +381,19 @@ DIFERENCIA: ${formatCOP(diferencia)}`;
                     <p className="text-sm font-black text-white tracking-tighter italic">{formatCOP(activeSesion.total_sistecredito || 0)}</p>
                   </div>
                 </div>
+
+                {(Number(activeSesion.total_abonos_separados || 0) > 0 || Number(activeSesion.total_devoluciones_separados || 0) > 0) && (
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <div className="p-2 bg-indigo-500/10 rounded-xl border border-indigo-400/20 text-center">
+                      <p className="text-[7px] uppercase tracking-widest text-indigo-300 font-bold mb-0.5">Abono Sep.</p>
+                      <p className="text-xs font-black text-indigo-200">+{formatCOP(activeSesion.total_abonos_separados || 0)}</p>
+                    </div>
+                    <div className="p-2 bg-rose-500/10 rounded-xl border border-rose-400/20 text-center">
+                      <p className="text-[7px] uppercase tracking-widest text-rose-300 font-bold mb-0.5">Devol. Sep.</p>
+                      <p className="text-xs font-black text-rose-200">-{formatCOP(activeSesion.total_devoluciones_separados || 0)}</p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-5 mt-6 pt-6 border-t border-white/10">
                   <div className="p-3 bg-indigo-500/20 rounded-2xl border border-white/5">
@@ -542,6 +556,9 @@ DIFERENCIA: ${formatCOP(diferencia)}`;
                 total_tarjeta: activeSesion.total_tarjeta || 0,
                 total_addi: activeSesion.total_addi || 0,
                 total_sistecredito: activeSesion.total_sistecredito || 0,
+                total_abonos_separados: activeSesion.total_abonos_separados || 0,
+                total_devoluciones_separados: activeSesion.total_devoluciones_separados || 0,
+                conciliacion_pendiente: activeSesion.conciliacion_pendiente,
                 total_ingresos: activeSesion.total_ingresos,
                 total_salidas: activeSesion.total_salidas,
                 valor_esperado: activeSesion.valor_esperado,

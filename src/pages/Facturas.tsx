@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useReactToPrint } from "react-to-print";
 import API from "../api/api";
 import { formatCOP, formatDateTime } from "../utils/format";
@@ -29,7 +29,8 @@ function ModalCambioProducto({ factura, detalles, onClose, onExito }: any) {
     const pDevuelto = detalles.find((d: any) => d.producto_id === Number(productoDevueltoId));
     const valorOriginal = pDevuelto ? Number(pDevuelto.precio_unitario) : 0;
     const valorNuevo = productoNuevo ? Number(productoNuevo.precio_venta) : 0;
-    const diferencia = valorNuevo - valorOriginal;
+    const cantidadCambio = factura.metodo_pago === 'Separado' || factura.origen_separado ? Number(pDevuelto?.cantidad || 1) : 1;
+    const diferencia = (Math.round(valorNuevo * 100) - Math.round(valorOriginal * 100)) * cantidadCambio / 100;
 
     const handleConfirm = () => {
         if (!pDevuelto) return alert("Seleccione el producto a devolver.");
@@ -39,8 +40,8 @@ function ModalCambioProducto({ factura, detalles, onClose, onExito }: any) {
             factura_id: factura.id,
             producto_devuelto_id: pDevuelto.producto_id,
             producto_nuevo_id: productoNuevo.id,
-            cantidad_devuelta: 1,
-            cantidad_nueva: 1,
+            cantidad_devuelta: cantidadCambio,
+            cantidad_nueva: cantidadCambio,
             valor_original: valorOriginal,
             valor_nuevo: valorNuevo,
             saldo_adicional: diferencia,
@@ -185,10 +186,14 @@ function Facturas() {
     const [seccionActiva, setSeccionActiva] = useState<'ventas' | 'abonos_separados'>('ventas');
 
     // Estados para Historial de Abonos de Separados
-    const hoyStr = new Date().toISOString().slice(0, 10);
-    const [fechaFiltroAbono, setFechaFiltroAbono] = useState<string>(hoyStr);
+    const hoyStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const [fechaDesdeAbono, setFechaDesdeAbono] = useState<string>(hoyStr);
+    const [fechaHastaAbono, setFechaHastaAbono] = useState<string>(hoyStr);
     const [searchAbono, setSearchAbono] = useState<string>("");
+    const [vistaAbonos, setVistaAbonos] = useState<'agrupado' | 'lista'>('agrupado');
+    const [expandedSeparados, setExpandedSeparados] = useState<Record<number, boolean>>({});
     const [abonosList, setAbonosList] = useState<any[]>([]);
+    const historialRequest = useRef(0);
     const [resumenSeparados, setResumenSeparados] = useState<any>({
         total_separados_registrados: 0,
         valor_total_separados: 0,
@@ -241,14 +246,68 @@ function Facturas() {
         API.get("/empresa").then(res => setEmpresa(res.data)).catch(console.error);
     }, [filtroRapido, filtroTipoFactura, searchTerm]);
 
+    const toggleExpandSeparado = (sepId: number) => {
+        setExpandedSeparados(prev => ({
+            ...prev,
+            [sepId]: prev[sepId] === undefined ? false : !prev[sepId]
+        }));
+    };
+
+    const abonosAgrupados = useMemo(() => {
+        const map = new Map<number, {
+            separado_id: number;
+            cliente_id: number;
+            cliente_nombre: string;
+            cliente_documento: string;
+            cliente_telefono: string;
+            separado_total: number;
+            saldo_pendiente: number;
+            separado_estado: string;
+            separado_fecha_creacion: string;
+            total_abonado_en_rango: number;
+            abonos: any[];
+        }>();
+
+        abonosList.forEach(item => {
+            const sepId = item.separado_id;
+            if (!map.has(sepId)) {
+                map.set(sepId, {
+                    separado_id: sepId,
+                    cliente_id: item.cliente_id,
+                    cliente_nombre: item.cliente_nombre || 'Cliente General',
+                    cliente_documento: item.cliente_documento || '',
+                    cliente_telefono: item.cliente_telefono || '',
+                    separado_total: Number(item.separado_total || 0),
+                    saldo_pendiente: Number(item.saldo_pendiente || 0),
+                    separado_estado: item.separado_estado || 'Pendiente',
+                    separado_fecha_creacion: item.separado_fecha_creacion || '',
+                    total_abonado_en_rango: 0,
+                    abonos: []
+                });
+            }
+            const grupo = map.get(sepId)!;
+            grupo.total_abonado_en_rango += Number(item.monto || 0);
+            grupo.abonos.push(item);
+        });
+
+        return Array.from(map.values());
+    }, [abonosList]);
+
     const fetchHistorialAbonos = () => {
+        const request = ++historialRequest.current;
         setLoadingAbonos(true);
         const queryParams = new URLSearchParams();
-        if (fechaFiltroAbono) queryParams.append("fecha", fechaFiltroAbono);
+        if (fechaDesdeAbono && fechaHastaAbono && fechaDesdeAbono === fechaHastaAbono) {
+            queryParams.append("fecha", fechaDesdeAbono);
+        } else {
+            if (fechaDesdeAbono) queryParams.append("fecha_inicio", fechaDesdeAbono);
+            if (fechaHastaAbono) queryParams.append("fecha_fin", fechaHastaAbono);
+        }
         if (searchAbono.trim()) queryParams.append("search", searchAbono.trim());
 
         API.get(`/separados/historial-abonos?${queryParams.toString()}`)
             .then(res => {
+                if (request !== historialRequest.current) return;
                 setAbonosList(res.data.abonos || []);
                 if (res.data.resumen_global) {
                     setResumenSeparados(res.data.resumen_global);
@@ -256,6 +315,7 @@ function Facturas() {
                 setLoadingAbonos(false);
             })
             .catch(err => {
+                if (request !== historialRequest.current) return;
                 console.error("Error cargando abonos:", err);
                 setLoadingAbonos(false);
             });
@@ -264,8 +324,19 @@ function Facturas() {
     useEffect(() => {
         if (seccionActiva === 'abonos_separados') {
             fetchHistorialAbonos();
+            const refresh = () => fetchHistorialAbonos();
+            window.addEventListener('focus', refresh);
+            let disposed = false;
+            let cleanup = () => {};
+            import('../utils/socket').then(({ socket }) => {
+                if (disposed) return;
+                const events = ['abono_added', 'separado_updated', 'separado_created'];
+                events.forEach(event => socket.on(event, refresh));
+                cleanup = () => events.forEach(event => socket.off(event, refresh));
+            });
+            return () => { disposed = true; historialRequest.current++; cleanup(); window.removeEventListener('focus', refresh); };
         }
-    }, [seccionActiva, fechaFiltroAbono, searchAbono]);
+    }, [seccionActiva, fechaDesdeAbono, fechaHastaAbono, searchAbono]);
 
     const fetchFacturas = (p: number = page) => {
         setLoading(true);
@@ -445,7 +516,7 @@ function Facturas() {
                     <div className="flex flex-wrap items-center gap-4">
                         {/* Filtro de Pago */}
                         <div className="flex flex-wrap p-1 bg-slate-100 rounded-2xl border border-slate-200">
-                            {["Todas", "Efectivo", "Transferencia", "Tarjeta", "Addi", "Sistecredito"].map(f => (
+                            {["Todas", "Efectivo", "Transferencia", "Tarjeta", "Addi", "Sistecredito", "Separado"].map(f => (
                                 <button
                                     key={f}
                                     onClick={() => setFiltroRapido(f)}
@@ -741,27 +812,46 @@ function Facturas() {
                                     {formatCOP(abonosList.reduce((acc, a) => acc + Number(a.monto || 0), 0))}
                                 </p>
                                 <p className="text-[11px] text-indigo-500 mt-1 font-medium">
-                                    {abonosList.length} abonos {fechaFiltroAbono ? `el ${fechaFiltroAbono}` : 'en el filtro actual'}
+                                    {abonosList.length} abonos {
+                                        fechaDesdeAbono && fechaHastaAbono && fechaDesdeAbono === fechaHastaAbono
+                                            ? `el ${fechaDesdeAbono}`
+                                            : fechaDesdeAbono && fechaHastaAbono
+                                            ? `del ${fechaDesdeAbono} al ${fechaHastaAbono}`
+                                            : fechaDesdeAbono
+                                            ? `desde ${fechaDesdeAbono}`
+                                            : fechaHastaAbono
+                                            ? `hasta ${fechaHastaAbono}`
+                                            : 'en el histórico completo'
+                                    }
                                 </p>
                             </div>
                         </div>
 
-                        {/* Filtros de Fecha y Búsqueda */}
-                        <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-                            <div className="flex flex-wrap items-center gap-3">
-                                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-2xl border border-slate-200">
-                                    <span className="text-xs font-semibold text-slate-500">📅 Fecha:</span>
+                        {/* Filtros de Rango de Fechas (Desde - Hasta), Modos de Agrupación y Búsqueda */}
+                        <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
+                                    <span className="text-xs font-semibold text-slate-500">📅 Desde:</span>
                                     <input
                                         type="date"
-                                        value={fechaFiltroAbono}
-                                        onChange={e => setFechaFiltroAbono(e.target.value)}
-                                        className="bg-transparent text-sm font-semibold text-slate-800 outline-none cursor-pointer"
+                                        value={fechaDesdeAbono}
+                                        onChange={e => setFechaDesdeAbono(e.target.value)}
+                                        className="bg-transparent text-xs font-semibold text-slate-800 outline-none cursor-pointer"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-2xl border border-slate-200">
+                                    <span className="text-xs font-semibold text-slate-500">Hasta:</span>
+                                    <input
+                                        type="date"
+                                        value={fechaHastaAbono}
+                                        onChange={e => setFechaHastaAbono(e.target.value)}
+                                        className="bg-transparent text-xs font-semibold text-slate-800 outline-none cursor-pointer"
                                     />
                                 </div>
                                 <button
-                                    onClick={() => setFechaFiltroAbono(hoyStr)}
-                                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                                        fechaFiltroAbono === hoyStr
+                                    onClick={() => { setFechaDesdeAbono(hoyStr); setFechaHastaAbono(hoyStr); }}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                        fechaDesdeAbono === hoyStr && fechaHastaAbono === hoyStr
                                             ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
                                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                     }`}
@@ -769,15 +859,45 @@ function Facturas() {
                                     Hoy
                                 </button>
                                 <button
-                                    onClick={() => setFechaFiltroAbono("")}
-                                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                                        fechaFiltroAbono === ""
+                                    onClick={() => { setFechaDesdeAbono(""); setFechaHastaAbono(""); }}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                                        !fechaDesdeAbono && !fechaHastaAbono
                                             ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200'
                                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                                     }`}
                                 >
-                                    Ver Todo el Histórico
+                                    Todo
                                 </button>
+
+                                {/* Selector de Modo de Vista */}
+                                <div className="flex items-center p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                                    <button
+                                        type="button"
+                                        onClick={() => setVistaAbonos('agrupado')}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            vistaAbonos === 'agrupado'
+                                                ? 'bg-white text-indigo-700 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                        title="Agrupar abonos por Separado y Cliente"
+                                    >
+                                        <span>📁</span>
+                                        <span>Por Separado / Cliente</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setVistaAbonos('lista')}
+                                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                                            vistaAbonos === 'lista'
+                                                ? 'bg-white text-indigo-700 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                        title="Ver lista corrida de abonos"
+                                    >
+                                        <span>📄</span>
+                                        <span>Lista Corrida</span>
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="relative flex-1 max-w-md">
@@ -787,7 +907,7 @@ function Facturas() {
                                     placeholder="Buscar por cliente, documento o separado #..."
                                     value={searchAbono}
                                     onChange={e => setSearchAbono(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all text-sm font-medium text-slate-700"
+                                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all text-sm font-medium text-slate-700"
                                 />
                                 {searchAbono && (
                                     <button
@@ -800,116 +920,237 @@ function Facturas() {
                             </div>
                         </div>
 
-                        {/* Tabla de Abonos de Separados */}
-                        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                        {/* Contenedor de Historial de Abonos - Ajustado al espacio sin barra horizontal */}
+                        <div className="w-full">
                             {loadingAbonos ? (
-                                <div className="py-20 text-center space-y-4">
+                                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm py-20 text-center space-y-4">
                                     <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mx-auto"></div>
                                     <p className="text-slate-400 font-medium uppercase tracking-widest text-[10px]">Cargando historial de abonos...</p>
                                 </div>
                             ) : abonosList.length === 0 ? (
-                                <div className="py-20 text-center space-y-3">
+                                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm py-20 text-center space-y-3">
                                     <div className="text-5xl">📋</div>
                                     <h3 className="text-base font-bold text-slate-700">No se encontraron abonos registrados</h3>
                                     <p className="text-slate-400 text-xs max-w-sm mx-auto">
-                                        {fechaFiltroAbono
-                                            ? `No se registran abonos en la fecha ${fechaFiltroAbono}. Puedes probar seleccionando otra fecha o pulsar "Ver Todo el Histórico".`
+                                        {fechaDesdeAbono || fechaHastaAbono
+                                            ? "No se registran abonos en el período seleccionado. Puedes ampliar el rango o pulsar 'Ver Todo'."
                                             : "No hay abonos que coincidan con los criterios de búsqueda."}
                                     </p>
-                                    {fechaFiltroAbono && (
+                                    {(fechaDesdeAbono || fechaHastaAbono) && (
                                         <button
-                                            onClick={() => setFechaFiltroAbono("")}
+                                            onClick={() => { setFechaDesdeAbono(""); setFechaHastaAbono(""); }}
                                             className="mt-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-all"
                                         >
                                             Ver Todo el Histórico
                                         </button>
                                     )}
                                 </div>
+                            ) : vistaAbonos === 'agrupado' ? (
+                                /* VISTA AGRUPADA POR CLIENTE / SEPARADO (Ajustada 100% al ancho, sin scrollbar horizontal) */
+                                <div className="space-y-4">
+                                    {abonosAgrupados.map(grupo => {
+                                        const isExpanded = expandedSeparados[grupo.separado_id] !== false;
+                                        const esAnulado = String(grupo.separado_estado).toLowerCase() === 'anulado';
+                                        const estadoBadge = esAnulado
+                                            ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                            : grupo.separado_estado === 'ENTREGADO' || grupo.separado_estado === 'Pagado'
+                                            ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                            : 'bg-amber-100 text-amber-700 border-amber-200';
+
+                                        const pctAbonado = grupo.separado_total > 0
+                                            ? Math.min(100, Math.round(((grupo.separado_total - grupo.saldo_pendiente) / grupo.separado_total) * 100))
+                                            : 0;
+
+                                        return (
+                                            <div key={grupo.separado_id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden transition-all hover:border-indigo-300">
+                                                {/* Cabecera del Separado / Cliente */}
+                                                <div 
+                                                    onClick={() => toggleExpandSeparado(grupo.separado_id)}
+                                                    className="p-4 sm:p-5 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 border-b border-slate-100 flex flex-wrap items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70 transition-colors"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 font-black text-sm shadow-sm">
+                                                            #{grupo.separado_id}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">{grupo.cliente_nombre}</h4>
+                                                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${estadoBadge}`}>
+                                                                    {grupo.separado_estado}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                                                {grupo.cliente_documento && `CC: ${grupo.cliente_documento}`}
+                                                                {grupo.cliente_telefono && ` • Tel: ${grupo.cliente_telefono}`}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Resumen Financiero del Separado */}
+                                                    <div className="flex flex-wrap items-center gap-5 sm:gap-7 text-xs">
+                                                        <div>
+                                                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Total Separado</span>
+                                                            <span className="font-extrabold text-slate-800 text-sm">{formatCOP(grupo.separado_total)}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Abonado en Período</span>
+                                                            <span className="font-extrabold text-emerald-600 text-sm">+{formatCOP(grupo.total_abonado_en_rango)}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Saldo Pendiente</span>
+                                                            <span className={`font-extrabold text-sm ${esAnulado ? 'text-slate-400' : grupo.saldo_pendiente > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                                                {esAnulado ? '$0' : formatCOP(grupo.saldo_pendiente)}
+                                                            </span>
+                                                        </div>
+                                                        <div className="hidden lg:block w-28">
+                                                            <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
+                                                                <span>Progreso</span>
+                                                                <span>{pctAbonado}%</span>
+                                                            </div>
+                                                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                                <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${pctAbonado}%` }}></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Botón / Contador */}
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-100">
+                                                            {grupo.abonos.length} {grupo.abonos.length === 1 ? 'abono' : 'abonos'}
+                                                        </span>
+                                                        <span className="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-bold transition-transform">
+                                                            {isExpanded ? '▲' : '▼'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Abonos del Separado */}
+                                                {isExpanded && (
+                                                    <div className="divide-y divide-slate-100 bg-white">
+                                                        {grupo.abonos.map((item: any) => {
+                                                            const esDev = Number(item.monto) < 0 || String(item.metodo_pago).toLowerCase().includes('devolución');
+                                                            return (
+                                                                <div key={item.id} className="p-3.5 sm:px-6 flex flex-wrap items-center justify-between gap-3 text-xs hover:bg-slate-50/60 transition-colors">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`w-2 h-2 rounded-full ${esDev ? 'bg-rose-500' : 'bg-emerald-500'}`}></div>
+                                                                        <div>
+                                                                            <span className="font-semibold text-slate-700">{formatDateTime(item.fecha_pago)}</span>
+                                                                            <span className="text-[11px] text-slate-400 block sm:inline sm:ml-2">
+                                                                                👤 Cajero: <strong className="text-slate-600 font-medium">{item.cajero_nombre || 'Sistema'}</strong>
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-4">
+                                                                        <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                                                                            esDev
+                                                                                ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                                                                : item.metodo_pago === 'Efectivo'
+                                                                                ? 'bg-emerald-50 text-emerald-700'
+                                                                                : item.metodo_pago === 'Transferencia'
+                                                                                ? 'bg-sky-50 text-sky-700'
+                                                                                : item.metodo_pago === 'Sistecredito'
+                                                                                ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                                                                : 'bg-purple-50 text-purple-700'
+                                                                        }`}>
+                                                                            {item.metodo_pago}
+                                                                        </span>
+                                                                        <div className="text-right min-w-[90px]">
+                                                                            <span className={`text-sm font-black ${esDev ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                                                {esDev ? '-' : '+'}{formatCOP(Math.abs(item.monto))}
+                                                                            </span>
+                                                                            {esDev && <span className="text-[9px] text-rose-500 block uppercase font-bold">Devolución</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
+                                /* VISTA LISTA CONTINUA (Ajustada 100% al ancho sin forzar scrollbar) */
+                                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <table className="w-full text-left border-collapse table-auto">
                                         <thead>
                                             <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                                                <th className="py-3.5 px-4">Fecha / Hora</th>
-                                                <th className="py-3.5 px-4">Separado #</th>
-                                                <th className="py-3.5 px-4">Cliente (Quién Abonó)</th>
-                                                <th className="py-3.5 px-4">Cajero / Registró</th>
-                                                <th className="py-3.5 px-4">Método de Pago</th>
-                                                <th className="py-3.5 px-4 text-right">Monto Abonado</th>
-                                                <th className="py-3.5 px-4 text-right">Total Separado</th>
-                                                <th className="py-3.5 px-4 text-right">Saldo Restante</th>
+                                                <th className="py-3 px-3">Fecha / Hora</th>
+                                                <th className="py-3 px-2">Separado #</th>
+                                                <th className="py-3 px-3">Cliente</th>
+                                                <th className="py-3 px-3">Cajero</th>
+                                                <th className="py-3 px-2">Método</th>
+                                                <th className="py-3 px-3 text-right">Monto</th>
+                                                <th className="py-3 px-3 text-right">Total Sep.</th>
+                                                <th className="py-3 px-3 text-right">Saldo</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100 text-sm">
+                                        <tbody className="divide-y divide-slate-100 text-xs">
                                             {abonosList.map((item: any) => {
-                                                const estadoColor = item.separado_estado === 'ENTREGADO'
-                                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                                    : item.separado_estado === 'ANULADO'
+                                                const esDevolucion = Number(item.monto) < 0 || String(item.metodo_pago).toLowerCase().includes('devolución');
+                                                const esAnulado = String(item.separado_estado).toLowerCase() === 'anulado';
+                                                const estadoColor = esDevolucion || esAnulado
                                                     ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                                    : item.separado_estado === 'ENTREGADO' || item.separado_estado === 'Pagado'
+                                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
                                                     : 'bg-amber-100 text-amber-700 border-amber-200';
 
-                                                const porcentajeAbonado = item.separado_total > 0
-                                                    ? Math.min(100, Math.round(((item.separado_total - item.saldo_pendiente) / item.separado_total) * 100))
-                                                    : 0;
-
                                                 return (
-                                                    <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
-                                                        <td className="py-3.5 px-4 text-xs font-medium text-slate-600 whitespace-nowrap">
+                                                    <tr key={item.id} className={`transition-colors ${
+                                                        esDevolucion
+                                                            ? 'bg-rose-50/50 hover:bg-rose-50/80 border-l-4 border-l-rose-500'
+                                                            : esAnulado
+                                                            ? 'bg-slate-50/80 hover:bg-slate-100/80 border-l-4 border-l-rose-400'
+                                                            : 'hover:bg-slate-50/60'
+                                                    }`}>
+                                                        <td className="py-3 px-3 font-medium text-slate-600">
                                                             {formatDateTime(item.fecha_pago)}
                                                         </td>
-                                                        <td className="py-3.5 px-4 whitespace-nowrap">
-                                                            <div className="flex items-center gap-2">
+                                                        <td className="py-3 px-2">
+                                                            <div className="flex items-center gap-1.5">
                                                                 <span className="font-bold text-slate-900">#{item.separado_id}</span>
-                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${estadoColor}`}>
-                                                                    {item.separado_estado}
+                                                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${estadoColor}`}>
+                                                                    {esDevolucion ? 'DEV' : esAnulado ? 'ANUL' : item.separado_estado}
                                                                 </span>
                                                             </div>
                                                         </td>
-                                                        <td className="py-3.5 px-4">
-                                                            <div className="font-bold text-slate-900 text-sm">{item.cliente_nombre || 'Cliente General'}</div>
-                                                            <div className="text-[11px] text-slate-400 font-medium">
+                                                        <td className="py-3 px-3">
+                                                            <div className="font-bold text-slate-900">{item.cliente_nombre || 'Cliente General'}</div>
+                                                            <div className="text-[10px] text-slate-400">
                                                                 {item.cliente_documento && `CC: ${item.cliente_documento}`}
-                                                                {item.cliente_telefono && ` • Tel: ${item.cliente_telefono}`}
                                                             </div>
                                                         </td>
-                                                        <td className="py-3.5 px-4 text-xs font-semibold text-slate-600 whitespace-nowrap">
-                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700">
+                                                        <td className="py-3 px-3 font-semibold text-slate-600">
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px]">
                                                                 👤 {item.cajero_nombre || 'Sistema'}
                                                             </span>
                                                         </td>
-                                                        <td className="py-3.5 px-4 whitespace-nowrap">
-                                                            <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                                                                item.metodo_pago === 'Efectivo'
+                                                        <td className="py-3 px-2">
+                                                            <span className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${
+                                                                esDevolucion
+                                                                    ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                                                    : item.metodo_pago === 'Efectivo'
                                                                     ? 'bg-emerald-50 text-emerald-700'
                                                                     : item.metodo_pago === 'Transferencia'
                                                                     ? 'bg-sky-50 text-sky-700'
+                                                                    : item.metodo_pago === 'Sistecredito'
+                                                                    ? 'bg-teal-50 text-teal-700 border border-teal-200'
                                                                     : 'bg-purple-50 text-purple-700'
                                                             }`}>
                                                                 {item.metodo_pago}
                                                             </span>
-                                                            {item.metodo_pago === 'Mixto' && (
-                                                                <div className="text-[10px] text-slate-400 mt-0.5">
-                                                                    Efec: {formatCOP(item.pago_efectivo || 0)} | Transf: {formatCOP(item.pago_transferencia || 0)}
-                                                                </div>
-                                                            )}
                                                         </td>
-                                                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                                                            <div className="text-base font-bold text-emerald-600">
-                                                                +{formatCOP(item.monto)}
-                                                            </div>
+                                                        <td className="py-3 px-3 text-right font-black">
+                                                            <span className={esDevolucion ? 'text-rose-600' : 'text-emerald-600'}>
+                                                                {esDevolucion ? '-' : '+'}{formatCOP(Math.abs(item.monto))}
+                                                            </span>
                                                         </td>
-                                                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                                                            <div className="font-bold text-slate-800">
-                                                                {formatCOP(item.separado_total)}
-                                                            </div>
-                                                            <div className="text-[10px] text-slate-400">
-                                                                Progreso: {porcentajeAbonado}%
-                                                            </div>
+                                                        <td className="py-3 px-3 text-right font-bold text-slate-800">
+                                                            {formatCOP(item.separado_total)}
                                                         </td>
-                                                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                                                            <div className={`font-bold ${Number(item.saldo_pendiente) > 0 ? 'text-amber-600' : 'text-slate-400'}`}>
-                                                                {formatCOP(item.saldo_pendiente)}
-                                                            </div>
+                                                        <td className="py-3 px-3 text-right font-bold text-amber-600">
+                                                            {esAnulado ? '$0' : formatCOP(item.saldo_pendiente)}
                                                         </td>
                                                     </tr>
                                                 );

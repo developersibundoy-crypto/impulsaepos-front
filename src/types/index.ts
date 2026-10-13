@@ -40,6 +40,7 @@ export interface Proveedor {
 }
 
 export interface FacturaVenta {
+  origen_separado?: boolean | number;
   id: number;
   fecha: string;
   total: number;

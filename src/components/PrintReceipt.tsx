@@ -39,6 +39,9 @@ interface PrintReceiptProps {
     total_tarjeta?: number;
     total_addi?: number;
     total_sistecredito?: number;
+    total_abonos_separados?: number;
+    total_devoluciones_separados?: number;
+    conciliacion_pendiente?: boolean;
     total_ingresos: number;
     total_salidas: number;
     valor_esperado: number;
@@ -94,6 +97,7 @@ const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
           <div className="text-center mb-4">
             <h1 className="text-lg font-bold uppercase mb-1">{empresa?.nombre_empresa || "MI EMPRESA"}</h1>
             <p className="text-sm font-black border-y-2 border-black py-1 uppercase mt-2">Reporte de Cierre de Caja</p>
+            {cierreData.conciliacion_pendiente && <p className="font-bold">CUADRE PROVISIONAL: históricos pendientes de atribución o medio físico. Consulte Facturas / Abonos.</p>}
           </div>
 
           <div className="space-y-1.5 text-xs mb-4">
@@ -140,6 +144,18 @@ const PrintReceipt = forwardRef<HTMLDivElement, PrintReceiptProps>(
               <span className="pl-2">Sistecredito:</span>
               <span>{formatCOP(cierreData.total_sistecredito || 0)}</span>
             </div>
+            {Number(cierreData.total_abonos_separados || 0) > 0 && (
+              <div className="flex justify-between text-xs text-indigo-700">
+                <span>(+) Abonos Separados:</span>
+                <span>{formatCOP(cierreData.total_abonos_separados)}</span>
+              </div>
+            )}
+            {Number(cierreData.total_devoluciones_separados || 0) > 0 && (
+              <div className="flex justify-between text-xs text-rose-700">
+                <span>(-) Devoluciones Separados:</span>
+                <span>{formatCOP(cierreData.total_devoluciones_separados)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-xs text-emerald-600">
               <span>(+) Otros Ingresos:</span>
               <span>{formatCOP(cierreData.total_ingresos)}</span>

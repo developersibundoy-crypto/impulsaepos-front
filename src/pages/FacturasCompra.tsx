@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
+import * as XLSX from "xlsx";
 
 function FacturasCompra() {
   const [facturas, setFacturas] = useState<any[]>([]);
@@ -28,7 +29,7 @@ function FacturasCompra() {
       return pName.includes(searchProvider.toLowerCase());
     });
 
-    const groups: Record<string, { proveedor: string, facturas: any[], totalInversion: number, count: number, maxFecha: string }> = {};
+    const groups: Record<string, { proveedor: string, facturas: any[], totalInversion: number, totalVenta: number, count: number, maxFecha: string }> = {};
     
     filtered.forEach((f: any) => {
       const pName = f.proveedor || "Empresa Desconocida";
@@ -37,12 +38,14 @@ function FacturasCompra() {
           proveedor: pName,
           facturas: [],
           totalInversion: 0,
+          totalVenta: 0,
           count: 0,
           maxFecha: f.fecha
         };
       }
       groups[pName].facturas.push(f);
       groups[pName].totalInversion += parseFloat(f.total || 0);
+      groups[pName].totalVenta += parseFloat(f.total_venta || f.valor_venta || 0);
       groups[pName].count += 1;
       if (new Date(f.fecha) > new Date(groups[pName].maxFecha)) {
         groups[pName].maxFecha = f.fecha;
@@ -192,6 +195,89 @@ function FacturasCompra() {
   };
 
   const granTotalCalculado = editProductos.reduce((acc, curr) => acc + (parseFloat(curr.precio_compra) * parseFloat(curr.cantidad)), 0);
+  const granTotalVentaCalculado = editProductos.reduce((acc, curr) => acc + ((parseFloat(curr.precio_venta || curr.valor_venta) || 0) * (parseFloat(curr.cantidad) || 0)), 0);
+
+  const exportarFacturaExcel = (factura: any, itemsOverride?: any[]) => {
+    if (!factura) return;
+    
+    let items = itemsOverride;
+    if (!items) {
+      try {
+        items = typeof factura.datos_json === 'string' ? JSON.parse(factura.datos_json) : factura.datos_json;
+      } catch (e) {
+        items = [];
+      }
+    }
+    if (!Array.isArray(items)) items = [];
+
+    const rowsExcel: any[] = items.map((p: any, idx: number) => {
+      const cantidad = parseFloat(p.cantidad) || 0;
+      const costoUnd = parseFloat(p.precio_compra || p.costo) || 0;
+      const ventaUnd = parseFloat(p.precio_venta || p.valor_venta) || 0;
+      const subtotalCosto = costoUnd * cantidad;
+      const subtotalVenta = ventaUnd * cantidad;
+      const utilidadUnd = ventaUnd - costoUnd;
+      const margen = costoUnd > 0 ? ((utilidadUnd / costoUnd) * 100).toFixed(2) + '%' : '0%';
+
+      return {
+        '#': idx + 1,
+        'Referencia': p.referencia || 'S/R',
+        'Producto': p.nombre || 'Sin nombre',
+        'Categoría': p.categoria || 'General',
+        'Cantidad': cantidad,
+        'Costo Unitario ($)': costoUnd,
+        'Valor Venta ($)': ventaUnd,
+        'Margen Ganancia': margen,
+        'Subtotal Costo ($)': subtotalCosto,
+        'Subtotal Venta ($)': subtotalVenta,
+        'Utilidad Estimada ($)': subtotalVenta - subtotalCosto
+      };
+    });
+
+    const totalCantidad = items.reduce((acc: number, curr: any) => acc + (parseFloat(curr.cantidad) || 0), 0);
+    const totalCosto = items.reduce((acc: number, curr: any) => acc + ((parseFloat(curr.precio_compra || curr.costo) || 0) * (parseFloat(curr.cantidad) || 0)), 0);
+    const totalVenta = items.reduce((acc: number, curr: any) => acc + ((parseFloat(curr.precio_venta || curr.valor_venta) || 0) * (parseFloat(curr.cantidad) || 0)), 0);
+
+    rowsExcel.push({
+      '#': '',
+      'Referencia': 'TOTALES',
+      'Producto': `Factura #${factura.numero_factura || factura.id} - ${factura.proveedor || 'Sin Proveedor'}`,
+      'Categoría': '',
+      'Cantidad': totalCantidad,
+      'Costo Unitario ($)': '',
+      'Valor Venta ($)': '',
+      'Margen Ganancia': totalCosto > 0 ? (((totalVenta - totalCosto) / totalCosto) * 100).toFixed(2) + '%' : '0%',
+      'Subtotal Costo ($)': totalCosto,
+      'Subtotal Venta ($)': totalVenta,
+      'Utilidad Estimada ($)': totalVenta - totalCosto
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(rowsExcel);
+
+    worksheet['!cols'] = [
+      { wch: 5 },
+      { wch: 18 },
+      { wch: 35 },
+      { wch: 20 },
+      { wch: 10 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 22 }
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, `Factura_${factura.id}`);
+
+    const safeProveedor = (factura.proveedor || 'PROVEEDOR').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeFactura = (factura.numero_factura || factura.id || 'SN').toString().replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fechaStr = new Date(factura.fecha || Date.now()).toISOString().slice(0, 10);
+    const nombreArchivo = `FACTURA_COMPRA_${safeFactura}_${safeProveedor}_${fechaStr}.xlsx`;
+
+    XLSX.writeFile(workbook, nombreArchivo);
+  };
 
   const handleViewFile = (e: React.MouseEvent, base64Data: string) => {
     e.stopPropagation();
@@ -269,8 +355,12 @@ function FacturasCompra() {
                        <span className="text-sm font-semibold text-slate-700">{group.count}</span>
                     </div>
                     <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm flex flex-col items-end justify-center">
-                       <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest">Inversión Total</span>
+                       <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest">Inversión Costo</span>
                        <span className="text-sm font-semibold text-indigo-600">{formatCOP(group.totalInversion)}</span>
+                    </div>
+                    <div className="bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm flex flex-col items-end justify-center">
+                       <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-widest">Valor Venta</span>
+                       <span className="text-sm font-semibold text-emerald-600">{formatCOP(group.totalVenta)}</span>
                     </div>
                   </div>
                   <div className={`w-8 h-8 flex items-center justify-center rounded-full bg-white border border-slate-200 shadow-sm text-slate-400 transition-transform duration-300 group-hover/header:text-indigo-600 ${expandedProviders[group.proveedor] ? 'rotate-180' : ''}`}>
@@ -289,6 +379,7 @@ function FacturasCompra() {
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">ID / Factura Física</th>
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest text-center">Unds</th>
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest text-right">Costo Factura</th>
+                      <th className="px-6 py-4 text-[10px] font-semibold text-emerald-600 uppercase tracking-widest text-right">Valor Venta</th>
                       <th className="px-6 py-4 text-[10px] font-semibold text-slate-400 uppercase tracking-widest text-center">Acción</th>
                     </tr>
                   </thead>
@@ -309,6 +400,9 @@ function FacturasCompra() {
                           </td>
                           <td className="px-6 py-4 text-right">
                               <span className="text-sm font-semibold text-slate-800 tracking-tight">{formatCOP(f.total)}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                              <span className="text-sm font-semibold text-emerald-600 tracking-tight">{formatCOP(f.total_venta || f.valor_venta || 0)}</span>
                           </td>
                           <td className="px-6 py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
@@ -332,6 +426,16 @@ function FacturasCompra() {
                                   </a>
                                 </>
                               )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  exportarFacturaExcel(f);
+                                }}
+                                className="px-3 py-2 bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all uppercase tracking-widest shadow-sm flex items-center gap-1"
+                                title="Descargar Factura en Excel"
+                              >
+                                <span>📥</span> Excel
+                              </button>
                               <button className="px-4 py-2 bg-white border border-slate-200 text-[10px] font-medium text-slate-500 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-all uppercase tracking-widest shadow-sm">Ver Detalle</button>
                             </div>
                           </td>
@@ -363,9 +467,18 @@ function FacturasCompra() {
                 </div>
                 <div className="flex gap-4">
                    {!isEditing ? (
-                     <button className="px-6 py-3 bg-amber-50 text-amber-600 font-semibold text-xs rounded-2xl hover:bg-amber-100 transition-all uppercase tracking-widest border border-amber-200" onClick={() => setIsEditing(true)}>
-                       ✏️ Modificar lote
-                     </button>
+                     <>
+                       <button
+                         onClick={() => exportarFacturaExcel(selectedFactura, editProductos)}
+                         className="px-6 py-3 bg-emerald-50 text-emerald-700 font-semibold text-xs rounded-2xl hover:bg-emerald-100 transition-all uppercase tracking-widest border border-emerald-200 flex items-center gap-2 shadow-sm"
+                         title="Descargar factura en formato Excel"
+                       >
+                         <span>📥</span> Descargar Excel
+                       </button>
+                       <button className="px-6 py-3 bg-amber-50 text-amber-600 font-semibold text-xs rounded-2xl hover:bg-amber-100 transition-all uppercase tracking-widest border border-amber-200" onClick={() => setIsEditing(true)}>
+                         ✏️ Modificar lote
+                       </button>
+                     </>
                    ) : (
                      <button className="px-6 py-3 bg-slate-100 text-slate-500 font-black text-xs rounded-2xl hover:bg-slate-200 transition-all uppercase tracking-widest" onClick={() => setIsEditing(false)}>
                        🚫 Cancelar Edición
@@ -425,6 +538,7 @@ function FacturasCompra() {
                                     <th className="px-6 py-5">Item Ingresado</th>
                                     <th className="px-6 py-5 text-center">Cant</th>
                                     <th className="px-6 py-5 text-right">Costo Und</th>
+                                    <th className="px-6 py-5 text-right">Valor Venta</th>
                                     <th className="px-6 py-5 text-right">Subtotal</th>
                                     {isEditing && <th className="px-6 py-5 text-center"></th>}
                                 </tr>
@@ -445,9 +559,16 @@ function FacturasCompra() {
                                         </td>
                                         <td className="px-6 py-5 text-right">
                                             {isEditing ? (
-                                                <input type="number" value={prod.precio_compra} onChange={e => handleEditItemChange(index, "precio_compra", e.target.value)} className="w-32 bg-slate-100 border border-slate-200 rounded-lg text-right font-black py-2 pr-2 focus:bg-white outline-none" />
+                                                <input type="number" value={prod.precio_compra} onChange={e => handleEditItemChange(index, "precio_compra", e.target.value)} className="w-28 bg-slate-100 border border-slate-200 rounded-lg text-right font-black py-2 pr-2 focus:bg-white outline-none" />
                                             ) : (
                                                 <span className="font-bold text-slate-600">{formatCOP(prod.precio_compra)}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-5 text-right">
+                                            {isEditing ? (
+                                                <input type="number" value={prod.precio_venta || ""} onChange={e => handleEditItemChange(index, "precio_venta", e.target.value)} placeholder="0" className="w-28 bg-slate-100 border border-slate-200 rounded-lg text-right font-black py-2 pr-2 focus:bg-white outline-none text-emerald-700" />
+                                            ) : (
+                                                <span className="font-bold text-emerald-600">{formatCOP(prod.precio_venta || 0)}</span>
                                             )}
                                         </td>
                                         <td className="px-6 py-5 text-right">
@@ -466,10 +587,11 @@ function FacturasCompra() {
                                         <td className="px-6 py-6" colSpan={2}>
                                             <input type="text" placeholder="Código Barras + Enter" value={newProd.referencia} onChange={e=>setNewProd({...newProd, referencia: e.target.value})} onKeyDown={handleRefKeyDown} className="w-full px-4 py-3 border border-indigo-100 rounded-xl text-xs font-black outline-none focus:ring-4 focus:ring-indigo-100" />
                                         </td>
-                                        <td className="px-6 py-6" colSpan={2}>
+                                        <td className="px-6 py-6" colSpan={3}>
                                             <div className="flex gap-2">
                                                 <input type="text" placeholder="Nombre..." value={newProd.nombre} onChange={e=>setNewProd({...newProd, nombre: e.target.value})} className="flex-1 px-4 py-3 border border-indigo-100 rounded-xl text-xs font-bold outline-none" />
-                                                <input type="number" placeholder="Costo" value={newProd.precio_compra} onChange={e=>setNewProd({...newProd, precio_compra: e.target.value})} className="w-32 px-4 py-3 border border-indigo-100 rounded-xl text-xs font-black outline-none" />
+                                                <input type="number" placeholder="Costo" value={newProd.precio_compra} onChange={e=>setNewProd({...newProd, precio_compra: e.target.value})} className="w-28 px-4 py-3 border border-indigo-100 rounded-xl text-xs font-black outline-none" />
+                                                <input type="number" placeholder="Venta" value={newProd.precio_venta} onChange={e=>setNewProd({...newProd, precio_venta: e.target.value})} className="w-28 px-4 py-3 border border-indigo-100 rounded-xl text-xs font-black outline-none text-emerald-700" />
                                                 <button onClick={addNewProductToInvoice} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest whitespace-nowrap">+ Inyectar</button>
                                             </div>
                                         </td>
@@ -483,11 +605,26 @@ function FacturasCompra() {
              </div>
 
              <div className="p-10 bg-slate-900 border-t border-slate-800 flex flex-col md:flex-row justify-between items-center gap-8 shrink-0">
-                <div className="text-center md:text-left">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] block mb-2">Gran Total Invertido (Auditoría)</span>
-                    <div className="text-5xl font-black text-white tracking-tighter">{formatCOP(granTotalCalculado)}</div>
+                <div className="flex flex-col sm:flex-row gap-8 text-center md:text-left">
+                    <div>
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] block mb-2">Gran Total Invertido (Costo)</span>
+                        <div className="text-3xl lg:text-4xl font-black text-white tracking-tighter">{formatCOP(granTotalCalculado)}</div>
+                    </div>
+                    <div>
+                        <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.4em] block mb-2">Valor Venta Proyectado</span>
+                        <div className="text-3xl lg:text-4xl font-black text-emerald-400 tracking-tighter">{formatCOP(granTotalVentaCalculado)}</div>
+                    </div>
                 </div>
                 <div className="flex gap-4 w-full md:w-auto">
+                    {!isEditing && (
+                      <button
+                        onClick={() => exportarFacturaExcel(selectedFactura, editProductos)}
+                        className="flex-1 md:flex-none px-8 py-5 bg-emerald-600 text-white font-bold rounded-3xl hover:bg-emerald-500 transition-all uppercase tracking-widest text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+                        title="Descargar esta factura en formato Excel"
+                      >
+                        <span>📥</span> Descargar Excel (.xlsx)
+                      </button>
+                    )}
                     <button className="flex-1 md:flex-none px-10 py-5 bg-slate-800 text-slate-400 font-black rounded-3xl hover:text-white transition-all uppercase tracking-widest text-xs border border-slate-700" onClick={closeModal} disabled={isSaving}>
                         {isEditing ? "Descartar" : "Regresar"}
                     </button>

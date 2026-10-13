@@ -8,6 +8,15 @@ interface SesionCaja {
   total_ventas: number;
   total_efectivo: number;
   total_transferencia: number;
+  total_tarjeta?: number;
+  total_addi?: number;
+  total_sistecredito?: number;
+  total_abonos_separados?: number;
+  total_devoluciones_separados?: number;
+  efectivo_abonos_separados?: number;
+  efectivo_devoluciones_separados?: number;
+  conciliacion_pendiente?: boolean;
+  separados_pendientes_conciliacion?: { id: number; separado_id: number; monto: number; atribucion: string; estado_medio: string }[];
   total_ingresos: number;
   total_salidas: number;
   valor_esperado: number;

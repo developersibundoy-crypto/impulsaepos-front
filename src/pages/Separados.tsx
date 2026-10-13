@@ -3,6 +3,7 @@ import { useReactToPrint } from "react-to-print";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import PrintReceipt from "../components/PrintReceipt";
+import { intentoDevolucion } from "../utils/devolucionSeparado";
 
 interface Producto {
   id: number;
@@ -20,6 +21,13 @@ interface Cliente {
 }
 
 export default function Separados() {
+  const devolucionEnCurso = useRef(false);
+  const [intentoPendiente, setIntentoPendiente] = useState(false);
+  const claveDevolucion = (id: number) => {
+    const segmento = (localStorage.getItem('adminToken') || '').split('.')[1] || 'e30=';
+    const identidad = JSON.parse(atob(segmento.replace(/-/g, '+').replace(/_/g, '/')));
+    return `devolucion-separado:${identidad.empresa_id}:${identidad.id}:${id}`;
+  };
   const [separados, setSeparados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [termSeparado, setTermSeparado] = useState("");
@@ -52,6 +60,7 @@ export default function Separados() {
   // For View/Abonar
   const [viewSeparado, setViewSeparado] = useState<any>(null);
   const [viewAbonos, setViewAbonos] = useState<any[]>([]);
+  const [viewFlujo, setViewFlujo] = useState<any>({});
   const [abonoInput, setAbonoInput] = useState("");
 
   const [isEditing, setIsEditing] = useState(false);
@@ -343,6 +352,9 @@ export default function Separados() {
       .then(res => {
         setViewSeparado(res.data.separado);
         setViewAbonos(res.data.abonos);
+        setViewFlujo(res.data.resumen_flujo || {});
+        try { setIntentoPendiente(Boolean(sessionStorage.getItem(claveDevolucion(id)))); }
+        catch { setIntentoPendiente(false); }
         setAbonoInput("");
 
         // Cargar teléfono del cliente
@@ -385,10 +397,7 @@ export default function Separados() {
     if (!cajeroId) return alert("Selecciona el cajero vendedor");
     try {
       const resp = await API.put(`/separados/${viewSeparado.id}/completar`, { 
-        cajero_id: cajeroId ? parseInt(cajeroId) : null,
-        metodo_pago: metodoPago,
-        pago_efectivo: parseFloat(pagoEfectivo) || 0,
-        pago_transferencia: parseFloat(pagoTransferencia) || 0
+        cajero_id: cajeroId ? parseInt(cajeroId) : null
       });
 
       if (window.confirm("¿Imprimir comprobante de entrega?")) {
@@ -401,7 +410,7 @@ export default function Separados() {
                 cliente: viewSeparado.cliente_nombre || "Casual",
                 fecha: new Date().toISOString(),
                 total: viewSeparado.total,
-                metodo_pago: "Efectivo",
+                metodo_pago: "Separado",
                 cajero: cajeroName
               },
               detalles: resVentas.data
@@ -418,14 +427,51 @@ export default function Separados() {
   };
 
   const handleAnular = async () => {
-    if (!window.confirm("¿Anular este separado?")) return;
+    if (!viewSeparado || devolucionEnCurso.current) return;
+    const totalAbonado = (viewAbonos || []).reduce((acc: number, a: any) => acc + Math.round(Number(a.monto || 0) * 100), 0) / 100;
+    let storageKey = '';
+    devolucionEnCurso.current = true;
     try {
-      await API.put(`/separados/${viewSeparado.id}/anular`);
+      storageKey = claveDevolucion(viewSeparado.id);
+      let payload = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      if (payload) {
+        if (!window.confirm('Hay una devolución sin respuesta confirmada. ¿Reintentar la MISMA operación? No entregue dinero nuevamente.')) return;
+      } else {
+        const caja = await API.get('/caja/estado-actual');
+        if (!caja.data.abierta) throw new Error('Abra caja antes de anular o devolver');
+        let efectivo = '0', transferencia = '0';
+        if (totalAbonado > 0) {
+          const medio = window.prompt(`Remanente nominal: ${formatCOP(totalAbonado)}. Medio REAL que entrega ahora: Efectivo, Transferencia o Mixto`, 'Efectivo');
+          if (medio === null) return;
+          if (!['efectivo', 'transferencia', 'mixto'].includes(medio.trim().toLowerCase())) throw new Error('Medio inválido');
+          if (['efectivo', 'mixto'].includes(medio.trim().toLowerCase())) {
+            const valor = window.prompt('Efectivo realmente entregado (máximo dos decimales):', String(totalAbonado));
+            if (valor === null) return; efectivo = valor;
+          }
+          if (['transferencia', 'mixto'].includes(medio.trim().toLowerCase())) {
+            const valor = window.prompt('Transferencia realmente enviada (máximo dos decimales):', medio.trim().toLowerCase() === 'mixto' ? '0' : String(totalAbonado));
+            if (valor === null) return; transferencia = valor;
+          }
+          payload = intentoDevolucion(viewSeparado.id, caja.data.sesion.id, efectivo, transferencia, totalAbonado, crypto.randomUUID());
+        } else {
+          payload = { sesion_caja_id: caja.data.sesion.id, operacion_id: `${viewSeparado.id}.${caja.data.sesion.id}.${crypto.randomUUID()}`, devolucion_efectivo: 0, devolucion_transferencia: 0 };
+        }
+        if (!window.confirm(`¿Confirma anulación y entrega REAL de efectivo $${efectivo} y transferencia $${transferencia}? El stock se libera una sola vez.`)) return;
+        payload.motivo = window.prompt('Motivo de anulación:', 'Devolución de dinero y anulación');
+        if (payload.motivo === null) return;
+        sessionStorage.setItem(storageKey, JSON.stringify(payload));
+        setIntentoPendiente(true);
+      }
+      const resp = await API.put(`/separados/${viewSeparado.id}/anular`, payload);
+      sessionStorage.removeItem(storageKey);
+      setIntentoPendiente(false);
+      alert(resp.data.message || "Separado anulado con éxito");
       openView(viewSeparado.id);
       fetchSeparados();
     } catch (e: any) {
-      alert(e.response?.data?.error || "Error al anular");
-    }
+      if (e.response?.status === 400) { sessionStorage.removeItem(storageKey); setIntentoPendiente(false); }
+      alert(e.response?.data?.error || e.message || "Error al anular");
+    } finally { devolucionEnCurso.current = false; }
   };
 
   const handlePrintSeparado = () => {
@@ -892,8 +938,8 @@ export default function Separados() {
                   {!isEditing && (
                     <div className="space-y-3">
                       <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest ml-1">Forma de Pago del Abono</label>
-                      <div className="grid grid-cols-5 gap-2">
-                        {["Efectivo", "Transferencia", "Tarjeta", "Addi", "Mixto"].map((m) => (
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {["Efectivo", "Transferencia", "Tarjeta", "Addi", "Sistecredito", "Mixto"].map((m) => (
                           <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-xl text-[8px] font-black uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100' : 'bg-white text-blue-400 border-blue-100 hover:border-blue-300'}`}>
                             {m}
                           </button>
@@ -973,7 +1019,7 @@ export default function Separados() {
                           )}
                         </div>
                         <div className="text-right">
-                          <div className="font-medium text-emerald-600 text-sm">+{formatCOP(a.monto)}</div>
+                          <div className="font-medium text-emerald-600 text-sm">{Number(a.monto) >= 0 ? '+' : ''}{formatCOP(a.monto)}</div>
                           <div className="text-[7px] font-bold text-slate-300 uppercase">{a.metodo_pago}</div>
                         </div>
                       </div>
@@ -998,8 +1044,8 @@ export default function Separados() {
                           </div>
                         </div>
                         <div className="space-y-4">
-                          <div className="grid grid-cols-5 gap-1">
-                            {["Efectivo", "Transferencia", "Tarjeta", "Addi", "Mixto"].map((m) => (
+                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
+                            {["Efectivo", "Transferencia", "Tarjeta", "Addi", "Sistecredito", "Mixto"].map((m) => (
                               <button key={m} onClick={() => setMetodoPago(m)} className={`py-1.5 rounded-lg text-[7px] font-bold uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-amber-600 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-100 hover:border-amber-300'}`}>
                                 {m}
                               </button>
@@ -1056,29 +1102,14 @@ export default function Separados() {
                       <div className="bg-emerald-50 p-4 rounded-3xl border border-emerald-100 text-center space-y-4">
                         <div className="space-y-1">
                           <h4 className="font-medium text-emerald-800 text-sm uppercase">¡Total Liquidado!</h4>
-                          <p className="text-[9px] font-medium text-emerald-600 uppercase tracking-widest">Selecciona el método de pago para el ticket final.</p>
+                          <p className="text-[9px] font-medium text-emerald-600 uppercase tracking-widest">Factura Separado: entrega sin nuevo cobro. El stock ya fue reservado.</p>
                         </div>
-
-                        <div className="grid grid-cols-3 gap-2">
-                          {["Efectivo", "Transferencia", "Mixto"].map((m) => (
-                            <button key={m} onClick={() => setMetodoPago(m)} className={`py-2 rounded-lg text-[8px] font-bold uppercase tracking-widest transition-all border ${metodoPago === m ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-100 hover:border-emerald-300'}`}>
-                              {m}
-                            </button>
-                          ))}
-                        </div>
-
-                        {metodoPago === "Mixto" && (
-                          <div className="grid grid-cols-2 gap-2 animate-in fade-in duration-300">
-                            <input type="number" placeholder="Efectivo" value={pagoEfectivo} onChange={e => setPagoEfectivo(e.target.value)} className="w-full px-4 py-2 bg-white border border-emerald-100 rounded-xl text-xs font-bold text-center" />
-                            <input type="number" placeholder="Transferencia" value={pagoTransferencia} onChange={e => setPagoTransferencia(e.target.value)} className="w-full px-4 py-2 bg-white border border-emerald-100 rounded-xl text-xs font-bold text-center" />
-                          </div>
-                        )}
 
                         <select value={cajeroId} onChange={e => setCajeroId(e.target.value)} className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl font-medium text-emerald-700 outline-none uppercase text-[10px]">
                           <option value="">-- Seleccionar Vendedor --</option>
                           {cajeros.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
-                        <button onClick={handleCompletar} className="w-full py-3 bg-emerald-600 text-white rounded-2xl font-medium shadow-lg uppercase tracking-widest text-[10px]">Finalizar y Descontar</button>
+                        <button onClick={handleCompletar} className="w-full py-3 bg-emerald-600 text-white rounded-2xl font-medium shadow-lg uppercase tracking-widest text-[10px]">Facturar y entregar (sin nuevo cobro)</button>
                       </div>
                     )}
                   </div>
@@ -1091,7 +1122,7 @@ export default function Separados() {
                     <button onClick={handleAnular} className="text-[10px] text-rose-400 hover:text-rose-300 uppercase tracking-widest transition-colors underline underline-offset-4">Anular</button>
                     <button onClick={() => handleEdit(viewSeparado)} className="text-[10px] text-blue-400 hover:text-blue-300 uppercase tracking-widest transition-colors underline underline-offset-4 font-bold">📝 Editar / Agregar Productos</button>
                   </div>
-                ) : <div />}
+                ) : intentoPendiente || (viewSeparado.estado === 'Anulado' && Number(viewSeparado.neto_abonado) > 0) ? <button onClick={handleAnular} className="text-xs text-rose-300">{intentoPendiente ? 'Confirmar devolución pendiente' : 'Devolver remanente'}</button> : <div />}
                 <div className="flex-1 flex gap-2">
                   <div className="flex-1 flex items-center bg-white/5 rounded-xl border border-white/10 px-3">
                     <span className="text-white/40 text-[9px] font-bold mr-2">+57</span>
