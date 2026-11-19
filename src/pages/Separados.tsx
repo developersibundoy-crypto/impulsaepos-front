@@ -151,11 +151,27 @@ export default function Separados() {
     }
   };
 
+  const obtenerPrecioUnitarioFinal = (itm: any) => {
+    const base = Number(itm.precio_venta ?? itm.precio_final ?? 0);
+    const desc = Number(itm.descuento ?? 0);
+    if (desc > 0) {
+      return Math.round(base * (1 - desc / 100));
+    }
+    if (itm.precio_unitario !== undefined && Number(itm.precio_unitario) > 0) {
+      return Math.round(Number(itm.precio_unitario));
+    }
+    return Math.round(base);
+  };
+
   const handleCreate = async () => {
     if (!newClienteId) return alert("Selecciona un cliente");
     if (cart.length === 0) return alert("Agrega al menos un producto");
 
-    const total = cart.reduce((acc, c) => acc + (c.precio_venta * (1 - (c.descuento || 0) / 100)) * c.qty, 0);
+    const detallesConPrecioFinal = cart.map((c: any) => ({
+      ...c,
+      precio_unitario: obtenerPrecioUnitarioFinal(c)
+    }));
+    const total = detallesConPrecioFinal.reduce((acc, c) => acc + c.precio_unitario * c.qty, 0);
     const abono = parseFloat(initialPayment) || 0;
 
     if (abono > total) return alert("El abono inicial no puede ser mayor al total");
@@ -164,7 +180,7 @@ export default function Separados() {
 
       if (isEditing && editingId) {
         await API.put(`/separados/${editingId}`, {
-          detalles: cart,
+          detalles: detallesConPrecioFinal,
           total
         });
         alert("✅ Separado actualizado exitosamente");
@@ -172,7 +188,7 @@ export default function Separados() {
         if (abono > total) return alert("El abono inicial no puede ser mayor al total");
         const payload = {
           cliente_id: parseInt(newClienteId),
-          detalles: cart,
+          detalles: detallesConPrecioFinal,
           total,
           abono_inicial: abono,
           metodo_pago: metodoPago,
@@ -991,12 +1007,33 @@ export default function Separados() {
                   <div className="bg-slate-50 rounded-3xl p-5 border border-slate-100 space-y-3">
                     {(() => {
                       const items = typeof viewSeparado.detalles_json === 'string' ? JSON.parse(viewSeparado.detalles_json) : viewSeparado.detalles_json;
-                      return (items || []).map((itm: any, idx: number) => (
-                        <div key={idx} className="flex justify-between items-center text-xs text-slate-700 border-b border-slate-200/50 pb-2 last:border-0 last:pb-0">
-                          <span>{itm.qty || itm.cantidad}x <span className="uppercase text-slate-400">{itm.nombre}</span></span>
-                          <span>{formatCOP((itm.precio_venta || itm.precio_final || 0) * (itm.qty || itm.cantidad))}</span>
-                        </div>
-                      ));
+                      return (items || []).map((itm: any, idx: number) => {
+                        const cant = Number(itm.qty || itm.cantidad || 1);
+                        const precioBase = Number(itm.precio_venta ?? itm.precio_final ?? 0);
+                        const precioFinal = obtenerPrecioUnitarioFinal(itm);
+                        const subtotalOriginal = precioBase * cant;
+                        const subtotalFinal = precioFinal * cant;
+                        const tieneDescuento = subtotalOriginal > subtotalFinal;
+
+                        return (
+                          <div key={idx} className="flex justify-between items-center text-xs text-slate-700 border-b border-slate-200/50 pb-2 last:border-0 last:pb-0">
+                            <span>
+                              {cant}x <span className="uppercase text-slate-400">{itm.nombre}</span>
+                              {tieneDescuento && (
+                                <span className="ml-1.5 px-1.5 py-0.5 bg-rose-50 text-rose-500 rounded text-[9px] font-bold">
+                                  -{Number(itm.descuento || ((1 - precioFinal / precioBase) * 100)).toFixed(0)}%
+                                </span>
+                              )}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {tieneDescuento && (
+                                <span className="text-[10px] text-slate-400 line-through">{formatCOP(subtotalOriginal)}</span>
+                              )}
+                              <span className="font-semibold text-slate-800">{formatCOP(subtotalFinal)}</span>
+                            </div>
+                          </div>
+                        );
+                      });
                     })()}
                     <div className="pt-3 flex justify-between items-end">
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inversión Lote</span>
@@ -1173,7 +1210,10 @@ export default function Separados() {
             cajero={separadoPrintData.separado.cajero_nombre || cajeros.find(c => c.id == separadoPrintData.separado.cajero_id)?.nombre || undefined}
             items={(() => {
               const items = typeof separadoPrintData.separado.detalles_json === 'string' ? JSON.parse(separadoPrintData.separado.detalles_json) : separadoPrintData.separado.detalles_json;
-              return (items || []);
+              return (items || []).map((itm: any) => ({
+                ...itm,
+                precio_unitario: obtenerPrecioUnitarioFinal(itm),
+              }));
             })()}
             total={parseFloat(separadoPrintData.separado.total)}
             isSeparado={true}

@@ -164,6 +164,15 @@ function Productos() {
   const lastKeystrokeTime = useRef(0);
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const cartScrollRef = useRef<HTMLDivElement>(null);
+  const prevCartLenRef = useRef<{ tabId: number; len: number }>({ tabId: activeTabId, len: carrito.length });
+
+  useEffect(() => {
+    if (cartScrollRef.current && carrito.length > 0) {
+      cartScrollRef.current.scrollTop = cartScrollRef.current.scrollHeight;
+    }
+    prevCartLenRef.current = { tabId: activeTabId, len: carrito.length };
+  }, [carrito.length, activeTabId]);
 
   // Tab Handlers
   const nuevaTab = () => {
@@ -1148,7 +1157,7 @@ function Productos() {
         )}
 
         {/* Cart Items Area */}
-        <div className="flex-1 overflow-y-auto px-6 py-3 scrollbar-thin scrollbar-thumb-indigo-50 scrollbar-track-transparent">
+        <div ref={cartScrollRef} className="flex-1 overflow-y-auto px-6 py-3 scrollbar-thin scrollbar-thumb-indigo-50 scrollbar-track-transparent">
           {carrito.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center opacity-30 select-none">
               <div className="w-32 h-32 bg-slate-50 rounded-full flex items-center justify-center text-5xl mb-6 shadow-inner animate-pulse">🍱</div>

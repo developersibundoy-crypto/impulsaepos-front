@@ -273,6 +273,7 @@ function PagosEmpleados() {
                                             salarioProporcional = valorDiario * diasLiquidados;
                                         }
 
+                                        const tieneComisionesHabilitadas = Boolean(emp.paga_comisiones) || parseFloat(emp.porcentaje_comision) > 0 || emp.comisiones > 0;
                                         const isComisionesIncluidas = incluirComisiones[emp.cajero_id] ?? true;
                                         const comisionesAPagar = isComisionesIncluidas ? emp.comisiones : 0;
                                         const totalNeto = salarioProporcional + comisionesAPagar;
@@ -302,10 +303,10 @@ function PagosEmpleados() {
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-6 text-right">
-                                                    <div className={`font-medium text-sm ${emp.comisiones > 0 ? 'text-emerald-600' : 'text-slate-300'} ${!isComisionesIncluidas && emp.comisiones > 0 ? 'opacity-50 line-through' : ''}`}>
+                                                    <div className={`font-medium text-sm ${emp.comisiones > 0 ? 'text-emerald-600' : 'text-slate-300'} ${!isComisionesIncluidas && tieneComisionesHabilitadas ? 'opacity-50 line-through' : ''}`}>
                                                         +{formatCOP(emp.comisiones)}
                                                     </div>
-                                                    {emp.estado !== "Pagado" && emp.comisiones > 0 && (
+                                                    {emp.estado !== "Pagado" && tieneComisionesHabilitadas && (
                                                         <label className="flex items-center justify-end gap-1 mt-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                                                             <input 
                                                                 type="checkbox" 
@@ -316,7 +317,7 @@ function PagosEmpleados() {
                                                             <span className="text-[9px] font-medium text-slate-500 uppercase">Incluir</span>
                                                         </label>
                                                     )}
-                                                    {!isComisionesIncluidas && emp.comisiones > 0 && (
+                                                    {!isComisionesIncluidas && tieneComisionesHabilitadas && (
                                                         <div className="text-[8px] font-bold text-amber-500 uppercase mt-1">Acumuladas para después</div>
                                                     )}
                                                     {emp.porcentaje_comision > 0 && <div className="text-[8px] font-medium text-emerald-400 uppercase mt-1">Efec. {emp.porcentaje_comision}%</div>}

@@ -4,6 +4,997 @@ import API from "../api/api";
 import { formatCOP, formatDateTime } from "../utils/format";
 import { FacturaVenta } from "../types";
 import PrintReceipt from "../components/PrintReceipt";
+import * as XLSX from "xlsx";
+
+// ─── Modal: Exportar Facturas a Excel ────────────────────────────────────────
+function ModalExportarFacturas({ onClose }: { onClose: () => void }) {
+    const hoyStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Bogota',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+
+    const [tipoExportacion, setTipoExportacion] = useState<'compra' | 'venta'>('compra');
+    const [fechaDesde, setFechaDesde] = useState<string>(hoyStr);
+    const [fechaHasta, setFechaHasta] = useState<string>(hoyStr);
+    const [exportando, setExportando] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [preview, setPreview] = useState<number | null>(null);
+
+    const parsearProductosCompra = (datosJson: any): any[] => {
+        if (Array.isArray(datosJson)) return datosJson;
+        if (typeof datosJson === "string") {
+            try {
+                const parsed = JSON.parse(datosJson);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        }
+        return [];
+    };
+
+    const obtenerFechaLocal = (fechaIso: string) => {
+        if (!fechaIso) return "";
+        try {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Bogota',
+                year: 'numeric', month: '2-digit', day: '2-digit'
+            }).format(new Date(fechaIso));
+        } catch {
+            return String(fechaIso).slice(0, 10);
+        }
+    };
+
+    // Cargar conteo previo al exportar
+    useEffect(() => {
+        if (!fechaDesde || !fechaHasta || fechaDesde > fechaHasta) {
+            setPreview(null);
+            return;
+        }
+        let cancelado = false;
+
+        if (tipoExportacion === 'compra') {
+            API.get("/compras")
+                .then(res => {
+                    if (cancelado) return;
+                    const lista = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+                    const filtradas = lista.filter((f: any) => {
+                        const fStr = obtenerFechaLocal(f.fecha);
+                        return fStr >= fechaDesde && fStr <= fechaHasta;
+                    });
+                    setPreview(filtradas.length);
+                })
+                .catch(() => {
+                    if (!cancelado) setPreview(null);
+                });
+        } else {
+            const params = new URLSearchParams({
+                startDate: fechaDesde,
+                endDate: fechaHasta,
+                filtro: "Todas",
+                tipo_factura: "Todas",
+                page: "1",
+                limit: "1"
+            });
+            API.get(`/ventas?${params.toString()}`)
+                .then(res => {
+                    if (cancelado) return;
+                    const total = res.data?.total ?? (Array.isArray(res.data) ? res.data.length : null);
+                    setPreview(total);
+                })
+                .catch(() => {
+                    if (!cancelado) setPreview(null);
+                });
+        }
+
+        return () => { cancelado = true; };
+    }, [fechaDesde, fechaHasta, tipoExportacion]);
+
+    const ajustarColumnas = (ws: XLSX.WorkSheet, filas: any[]) => {
+        if (!filas || filas.length === 0) return;
+        const keys = Object.keys(filas[0]);
+        ws["!cols"] = keys.map(key => ({
+            wch: Math.min(45, Math.max(key.length, ...filas.map(r => String(r[key] ?? "").length)) + 3)
+        }));
+    };
+
+    const handleExportar = async () => {
+        if (!fechaDesde || !fechaHasta) {
+            setError("Selecciona el rango de fechas.");
+            return;
+        }
+        if (fechaDesde > fechaHasta) {
+            setError("La fecha 'Desde' no puede ser mayor que 'Hasta'.");
+            return;
+        }
+        setError(null);
+        setExportando(true);
+
+        try {
+            if (tipoExportacion === 'compra') {
+                const res = await API.get("/compras");
+                const lista = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+                const facturasRango = lista.filter((f: any) => {
+                    const fStr = obtenerFechaLocal(f.fecha);
+                    return fStr >= fechaDesde && fStr <= fechaHasta;
+                });
+
+                if (facturasRango.length === 0) {
+                    setError("No se encontraron facturas de compra en el rango seleccionado.");
+                    setExportando(false);
+                    return;
+                }
+
+                // Hoja 1: Facturas con sus Productos (desglosado fila por producto con toda la info de la factura)
+                const filasConProductos: any[] = [];
+                // Hoja 2: Resumen por Factura de Compra
+                const filasResumen: any[] = [];
+
+                facturasRango.forEach((f: any) => {
+                    const items = parsearProductosCompra(f.datos_json);
+                    const fechaFormateada = f.fecha
+                        ? new Date(f.fecha).toLocaleString("es-CO", { timeZone: "America/Bogota" })
+                        : "";
+                    const numFactura = f.numero_factura || `FC-${f.id}`;
+                    const proveedor = f.proveedor || "Sin Proveedor";
+                    const totalUnidades = items.reduce((acc, it) => acc + (Number(it.cantidad) || 0), 0);
+                    const totalCosto = Number(f.total ?? f.costo_total ?? 0);
+                    const totalVenta = Number(
+                        f.total_venta ??
+                        f.valor_venta ??
+                        items.reduce((acc, it) => acc + ((Number(it.precio_venta || it.valor_venta) || 0) * (Number(it.cantidad) || 0)), 0)
+                    );
+
+                    filasResumen.push({
+                        "ID Compra": f.id,
+                        "Número Factura": numFactura,
+                        "Fecha": fechaFormateada,
+                        "Proveedor": proveedor,
+                        "Items Distintos": items.length,
+                        "Total Unidades": totalUnidades,
+                        "Total Costo ($)": totalCosto,
+                        "Total Valor Venta ($)": totalVenta,
+                        "Utilidad Proyectada ($)": totalVenta - totalCosto,
+                        "Soporte Adjunto": f.archivo_factura ? "SÍ" : "NO"
+                    });
+
+                    if (items.length === 0) {
+                        filasConProductos.push({
+                            "ID Compra": f.id,
+                            "Número Factura": numFactura,
+                            "Fecha": fechaFormateada,
+                            "Proveedor": proveedor,
+                            "Referencia Producto": "—",
+                            "Producto": "Sin productos detallados",
+                            "Categoría": "—",
+                            "Cantidad": 0,
+                            "Costo Unitario ($)": 0,
+                            "Precio Venta Unitario ($)": 0,
+                            "% Ganancia": "0%",
+                            "Subtotal Costo ($)": totalCosto,
+                            "Subtotal Venta ($)": totalVenta,
+                            "Utilidad Producto ($)": totalVenta - totalCosto,
+                            "Total Factura Compra ($)": totalCosto
+                        });
+                    } else {
+                        items.forEach((p: any) => {
+                            const cant = Number(p.cantidad) || 0;
+                            const costoUnd = Number(p.precio_compra ?? p.costo ?? 0);
+                            const ventaUnd = Number(p.precio_venta ?? p.valor_venta ?? 0);
+                            const subCosto = Number(p.subtotal_costo ?? (costoUnd * cant));
+                            const subVenta = Number(p.subtotal_venta ?? (ventaUnd * cant));
+                            const pctGanancia = p.porcentaje_ganancia !== undefined
+                                ? `${Number(p.porcentaje_ganancia).toFixed(2)}%`
+                                : (costoUnd > 0 ? `${(((ventaUnd - costoUnd) / costoUnd) * 100).toFixed(2)}%` : "0%");
+
+                            filasConProductos.push({
+                                "ID Compra": f.id,
+                                "Número Factura": numFactura,
+                                "Fecha": fechaFormateada,
+                                "Proveedor": proveedor,
+                                "Referencia Producto": p.referencia || "S/R",
+                                "Producto": p.nombre || "Sin nombre",
+                                "Categoría": p.categoria || "General",
+                                "Cantidad": cant,
+                                "Costo Unitario ($)": costoUnd,
+                                "Precio Venta Unitario ($)": ventaUnd,
+                                "% Ganancia": pctGanancia,
+                                "Subtotal Costo ($)": subCosto,
+                                "Subtotal Venta ($)": subVenta,
+                                "Utilidad Producto ($)": subVenta - subCosto,
+                                "Total Factura Compra ($)": totalCosto
+                            });
+                        });
+                    }
+                });
+
+                const wb = XLSX.utils.book_new();
+
+                const wsDetalle = XLSX.utils.json_to_sheet(filasConProductos);
+                ajustarColumnas(wsDetalle, filasConProductos);
+                XLSX.utils.book_append_sheet(wb, wsDetalle, "Compras y Productos");
+
+                const wsResumen = XLSX.utils.json_to_sheet(filasResumen);
+                ajustarColumnas(wsResumen, filasResumen);
+                XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen Facturas Compra");
+
+                const nombreArchivo = `Facturas_Compra_${fechaDesde}_al_${fechaHasta}.xlsx`;
+                XLSX.writeFile(wb, nombreArchivo);
+                onClose();
+            } else {
+                // Exportación de Facturas de Venta con sus Productos
+                let todasLasFacturas: any[] = [];
+                let currentPage = 1;
+                let lastPage = 1;
+
+                do {
+                    const params = new URLSearchParams({
+                        startDate: fechaDesde,
+                        endDate: fechaHasta,
+                        page: String(currentPage),
+                        limit: "200",
+                        filtro: "Todas",
+                        tipo_factura: "Todas",
+                        includeItems: "true"
+                    });
+                    const res = await API.get(`/ventas?${params.toString()}`);
+                    const data = res.data?.data ?? (Array.isArray(res.data) ? res.data : []);
+                    lastPage = res.data?.last_page ?? 1;
+                    todasLasFacturas = [...todasLasFacturas, ...data];
+                    currentPage++;
+                } while (currentPage <= lastPage);
+
+                if (todasLasFacturas.length === 0) {
+                    setError("No se encontraron facturas en el rango seleccionado.");
+                    setExportando(false);
+                    return;
+                }
+
+                // Hoja 1: Facturas con sus Productos
+                const filasConProductos: any[] = [];
+                // Hoja 2: Resumen de Facturas
+                const filasFacturas = todasLasFacturas.map((f: any) => {
+                    const numDoc = f.tipo_factura === "ELECTRONICA"
+                        ? `${f.prefijo ?? "FE"}-${f.consecutivo}`
+                        : `#${f.id}`;
+                    const fechaFmt = f.fecha
+                        ? new Date(f.fecha).toLocaleString("es-CO", { timeZone: "America/Bogota" })
+                        : "";
+                    const clienteNombre = Number(f.cliente_id) === 1
+                        ? "Cliente Mostrador"
+                        : (f.cliente ?? "Consumidor Final");
+                    const items: any[] = Array.isArray(f.productos) ? f.productos : [];
+
+                    if (items.length === 0) {
+                        filasConProductos.push({
+                            "ID Factura": f.id,
+                            "Tipo": f.tipo_factura ?? "POS",
+                            "Número / Consecutivo": numDoc,
+                            "Fecha": fechaFmt,
+                            "Cliente": clienteNombre,
+                            "Teléfono Cliente": f.telefono ?? "",
+                            "Vendedor / Cajero": f.cajero ?? "",
+                            "Método de Pago": f.metodo_pago ?? "",
+                            "Referencia Producto": "—",
+                            "Producto": "Sin detalle",
+                            "Cantidad": 0,
+                            "Precio Unitario ($)": 0,
+                            "Subtotal Producto ($)": 0,
+                            "IVA Factura ($)": Number(f.iva ?? 0),
+                            "Total Factura ($)": Number(f.total ?? 0),
+                            "Estado": f.anulada ? "ANULADA" : "ACTIVA"
+                        });
+                    } else {
+                        items.forEach((it: any) => {
+                            const cant = Number(it.cantidad) || 0;
+                            const precioUnd = Number(it.precio_unitario) || 0;
+                            filasConProductos.push({
+                                "ID Factura": f.id,
+                                "Tipo": f.tipo_factura ?? "POS",
+                                "Número / Consecutivo": numDoc,
+                                "Fecha": fechaFmt,
+                                "Cliente": clienteNombre,
+                                "Teléfono Cliente": f.telefono ?? "",
+                                "Vendedor / Cajero": f.cajero ?? "",
+                                "Método de Pago": f.metodo_pago ?? "",
+                                "Referencia Producto": it.referencia || "S/R",
+                                "Producto": it.nombre || "Producto",
+                                "Cantidad": cant,
+                                "Precio Unitario ($)": precioUnd,
+                                "Subtotal Producto ($)": cant * precioUnd,
+                                "IVA Factura ($)": Number(f.iva ?? 0),
+                                "Total Factura ($)": Number(f.total ?? 0),
+                                "Estado": f.anulada ? "ANULADA" : "ACTIVA"
+                            });
+                        });
+                    }
+
+                    return {
+                        "ID Factura": f.id,
+                        "Tipo": f.tipo_factura ?? "POS",
+                        "Número / Consecutivo": numDoc,
+                        "Fecha": fechaFmt,
+                        "Cliente": clienteNombre,
+                        "Teléfono Cliente": f.telefono ?? "",
+                        "Vendedor / Cajero": f.cajero ?? "",
+                        "Método de Pago": f.metodo_pago ?? "",
+                        "IVA": Number(f.iva ?? 0),
+                        "Total Venta": Number(f.total ?? 0),
+                        "Estado": f.anulada ? "ANULADA" : "ACTIVA",
+                        "Motivo Anulación": f.motivo_anulacion ?? "",
+                    };
+                });
+
+                const wb = XLSX.utils.book_new();
+
+                const wsProductos = XLSX.utils.json_to_sheet(filasConProductos);
+                ajustarColumnas(wsProductos, filasConProductos);
+                XLSX.utils.book_append_sheet(wb, wsProductos, "Facturas y Productos");
+
+                const wsFacturas = XLSX.utils.json_to_sheet(filasFacturas);
+                ajustarColumnas(wsFacturas, filasFacturas);
+                XLSX.utils.book_append_sheet(wb, wsFacturas, "Resumen Facturas");
+
+                const nombreArchivo = `Facturas_Ventas_${fechaDesde}_al_${fechaHasta}.xlsx`;
+                XLSX.writeFile(wb, nombreArchivo);
+                onClose();
+            }
+        } catch (err: any) {
+            console.error("Error exportando facturas:", err);
+            setError(err?.response?.data?.error ?? "Error al exportar. Intente nuevamente.");
+        } finally {
+            setExportando(false);
+        }
+    };
+
+    const columnasMostrar = tipoExportacion === 'compra'
+        ? ["ID Compra", "N° Factura", "Fecha", "Proveedor", "Referencia", "Producto", "Categoría", "Cantidad", "Costo Unitario", "Precio Venta", "% Ganancia", "Subtotal Costo", "Subtotal Venta", "Utilidad", "Total Factura"]
+        : ["ID Factura", "Tipo", "Número", "Fecha", "Cliente", "Teléfono", "Vendedor", "Método Pago", "Referencia", "Producto", "Cantidad", "Precio Unit.", "Subtotal", "IVA", "Total Factura"];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+
+                {/* Header */}
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-emerald-50 to-white">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center text-xl">📊</div>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800 tracking-tight">Exportar Facturas</h3>
+                            <p className="text-[11px] text-slate-400 font-medium">Exportar facturas con sus productos a Excel (.xlsx)</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                    >✕</button>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-5">
+                    {/* Selector de Tipo de Factura a Exportar */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                            🗂️ Tipo de Facturas a Exportar
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => { setTipoExportacion('venta'); setError(null); }}
+                                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                    tipoExportacion === 'venta'
+                                        ? 'bg-white text-emerald-700 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <span>🧾</span>
+                                <span>Facturas de Venta</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setTipoExportacion('compra'); setError(null); }}
+                                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                    tipoExportacion === 'compra'
+                                        ? 'bg-white text-emerald-700 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <span>📥</span>
+                                <span>Facturas de Compra</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Rango de Fechas */}
+                    <div className="space-y-3">
+                        <label className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                            📅 Rango de Fechas
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Desde</label>
+                                <input
+                                    type="date"
+                                    value={fechaDesde}
+                                    onChange={e => setFechaDesde(e.target.value)}
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all text-sm font-semibold text-slate-700"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hasta</label>
+                                <input
+                                    type="date"
+                                    value={fechaHasta}
+                                    onChange={e => setFechaHasta(e.target.value)}
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all text-sm font-semibold text-slate-700"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Accesos rápidos de fecha */}
+                        <div className="flex gap-2 flex-wrap">
+                            {[
+                                { label: "Hoy", action: () => { setFechaDesde(hoyStr); setFechaHasta(hoyStr); } },
+                                {
+                                    label: "Esta semana", action: () => {
+                                        const d = new Date();
+                                        const day = d.getDay() || 7;
+                                        const lunes = new Date(d); lunes.setDate(d.getDate() - day + 1);
+                                        const fmt = (dt: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(dt);
+                                        setFechaDesde(fmt(lunes)); setFechaHasta(hoyStr);
+                                    }
+                                },
+                                {
+                                    label: "Este mes", action: () => {
+                                        const d = new Date();
+                                        const primeroDiaMes = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' })
+                                            .format(new Date(d.getFullYear(), d.getMonth(), 1));
+                                        setFechaDesde(primeroDiaMes); setFechaHasta(hoyStr);
+                                    }
+                                },
+                            ].map(btn => (
+                                <button
+                                    key={btn.label}
+                                    type="button"
+                                    onClick={btn.action}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 border border-transparent text-slate-600 rounded-xl text-[11px] font-bold transition-all"
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Info de columnas exportadas */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                            Columnas que se exportarán ({tipoExportacion === 'compra' ? 'Compra + Productos' : 'Venta + Productos'})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {columnasMostrar.map(col => (
+                                <span key={col} className="px-2 py-0.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-600">
+                                    {col}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Preview / conteo */}
+                    {preview !== null && (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                            <span className="text-emerald-600 text-lg">📋</span>
+                            <p className="text-xs font-semibold text-emerald-700">
+                                Se encontraron <strong>{preview}</strong> facturas de {tipoExportacion} en el rango seleccionado.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Error */}
+                    {error && (
+                        <div className="flex items-center gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                            <span className="text-rose-500 text-lg">⚠️</span>
+                            <p className="text-xs font-semibold text-rose-600">{error}</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer / Acción */}
+                <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+                    <button
+                        onClick={handleExportar}
+                        disabled={exportando || !fechaDesde || !fechaHasta}
+                        className="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold uppercase tracking-widest text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-100 flex items-center justify-center gap-2"
+                    >
+                        {exportando ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                Exportando...
+                            </>
+                        ) : (
+                            <>
+                                <span>📥</span>
+                                Descargar Excel ({tipoExportacion === 'compra' ? 'Compras' : 'Ventas'})
+                            </>
+                        )}
+                    </button>
+                    <p className="text-center text-[10px] text-slate-400 mt-2 font-medium uppercase tracking-widest">
+                        El archivo se descargará automáticamente en tu equipo
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─── Modal: Exportar Separados y Abonos a Excel ──────────────────────────────
+function ModalExportarSeparados({
+    onClose,
+    initialDesde,
+    initialHasta
+}: {
+    onClose: () => void;
+    initialDesde?: string;
+    initialHasta?: string;
+}) {
+    const hoyStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Bogota',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+    }).format(new Date());
+
+    const [modoExportacion, setModoExportacion] = useState<'separados' | 'abonos'>('separados');
+    const [fechaDesde, setFechaDesde] = useState<string>(initialDesde !== undefined ? initialDesde : hoyStr);
+    const [fechaHasta, setFechaHasta] = useState<string>(initialHasta !== undefined ? initialHasta : hoyStr);
+    const [exportando, setExportando] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [preview, setPreview] = useState<number | null>(null);
+
+    const obtenerFechaLocal = (fechaIso: string) => {
+        if (!fechaIso) return "";
+        try {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Bogota',
+                year: 'numeric', month: '2-digit', day: '2-digit'
+            }).format(new Date(fechaIso));
+        } catch {
+            return String(fechaIso).slice(0, 10);
+        }
+    };
+
+    const parsearDetalles = (detallesJson: any): any[] => {
+        if (Array.isArray(detallesJson)) return detallesJson;
+        if (typeof detallesJson === "string") {
+            try {
+                const parsed = JSON.parse(detallesJson);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        }
+        return [];
+    };
+
+    useEffect(() => {
+        if (fechaDesde && fechaHasta && fechaDesde > fechaHasta) {
+            setPreview(null);
+            return;
+        }
+        let cancelado = false;
+
+        if (modoExportacion === 'separados') {
+            API.get("/separados")
+                .then(res => {
+                    if (cancelado) return;
+                    const lista = Array.isArray(res.data) ? res.data : (res.data?.data ?? []);
+                    const filtrados = lista.filter((s: any) => {
+                        const fStr = obtenerFechaLocal(s.fecha_creacion);
+                        if (fechaDesde && fStr < fechaDesde) return false;
+                        if (fechaHasta && fStr > fechaHasta) return false;
+                        return true;
+                    });
+                    setPreview(filtrados.length);
+                })
+                .catch(() => {
+                    if (!cancelado) setPreview(null);
+                });
+        } else {
+            const queryParams = new URLSearchParams();
+            if (fechaDesde && fechaHasta && fechaDesde === fechaHasta) {
+                queryParams.append("fecha", fechaDesde);
+            } else {
+                if (fechaDesde) queryParams.append("fecha_inicio", fechaDesde);
+                if (fechaHasta) queryParams.append("fecha_fin", fechaHasta);
+            }
+            API.get(`/separados/historial-abonos?${queryParams.toString()}`)
+                .then(res => {
+                    if (cancelado) return;
+                    const abonos = res.data?.abonos ?? [];
+                    setPreview(abonos.length);
+                })
+                .catch(() => {
+                    if (!cancelado) setPreview(null);
+                });
+        }
+
+        return () => { cancelado = true; };
+    }, [fechaDesde, fechaHasta, modoExportacion]);
+
+    const ajustarColumnas = (ws: XLSX.WorkSheet, filas: any[]) => {
+        if (!filas || filas.length === 0) return;
+        const keys = Object.keys(filas[0]);
+        ws["!cols"] = keys.map(key => ({
+            wch: Math.min(45, Math.max(key.length, ...filas.map(r => String(r[key] ?? "").length)) + 3)
+        }));
+    };
+
+    const handleExportar = async () => {
+        if (fechaDesde && fechaHasta && fechaDesde > fechaHasta) {
+            setError("La fecha 'Desde' no puede ser mayor que 'Hasta'.");
+            return;
+        }
+        setError(null);
+        setExportando(true);
+
+        try {
+            const queryParams = new URLSearchParams();
+            if (fechaDesde && fechaHasta && fechaDesde === fechaHasta) {
+                queryParams.append("fecha", fechaDesde);
+            } else {
+                if (fechaDesde) queryParams.append("fecha_inicio", fechaDesde);
+                if (fechaHasta) queryParams.append("fecha_fin", fechaHasta);
+            }
+
+            const [sepRes, abonosRes] = await Promise.all([
+                API.get("/separados"),
+                API.get(`/separados/historial-abonos?${queryParams.toString()}`)
+            ]);
+
+            const todosSeparados: any[] = Array.isArray(sepRes.data) ? sepRes.data : (sepRes.data?.data ?? []);
+            const abonosFiltrados: any[] = abonosRes.data?.abonos ?? [];
+
+            const separadosRango = todosSeparados.filter((s: any) => {
+                const fStr = obtenerFechaLocal(s.fecha_creacion);
+                if (fechaDesde && fStr < fechaDesde) return false;
+                if (fechaHasta && fStr > fechaHasta) return false;
+                return true;
+            });
+
+            if (modoExportacion === 'separados' && separadosRango.length === 0) {
+                setError("No se encontraron separados en el rango seleccionado.");
+                setExportando(false);
+                return;
+            }
+            if (modoExportacion === 'abonos' && abonosFiltrados.length === 0) {
+                setError("No se encontraron abonos registrados en el rango seleccionado.");
+                setExportando(false);
+                return;
+            }
+
+            // Construir hojas de Separados + Productos y Resumen
+            const filasConProductos: any[] = [];
+            const filasResumenSeparados: any[] = [];
+
+            const baseSeparados = modoExportacion === 'separados'
+                ? separadosRango
+                : todosSeparados.filter(s => abonosFiltrados.some(a => Number(a.separado_id) === Number(s.id)));
+
+            baseSeparados.forEach((s: any) => {
+                const items = parsearDetalles(s.detalles_json);
+                const fechaCreacionFmt = s.fecha_creacion
+                    ? new Date(s.fecha_creacion).toLocaleString("es-CO", { timeZone: "America/Bogota" })
+                    : "";
+                const cliente = s.cliente_nombre || "Cliente General";
+                const documento = s.cliente_documento || "";
+                const cajero = s.cajero_nombre || "Principal";
+                const totalSep = Number(s.total ?? 0);
+                const esAnulado = String(s.estado).toLowerCase() === "anulado";
+                const saldoPend = esAnulado ? 0 : Number(s.saldo_pendiente ?? 0);
+                const totalAbonado = esAnulado ? 0 : Math.max(0, totalSep - saldoPend);
+                const totalUnidades = items.reduce((acc, it) => acc + (Number(it.qty ?? it.cantidad) || 0), 0);
+
+                filasResumenSeparados.push({
+                    "ID Separado": `#${s.id}`,
+                    "Fecha Creación": fechaCreacionFmt,
+                    "Cliente": cliente,
+                    "Documento Cliente": documento,
+                    "Cajero": cajero,
+                    "Estado": s.estado || "Pendiente",
+                    "Items Distintos": items.length,
+                    "Total Unidades": totalUnidades,
+                    "Total Separado ($)": totalSep,
+                    "Total Abonado ($)": totalAbonado,
+                    "Saldo Pendiente ($)": saldoPend
+                });
+
+                if (items.length === 0) {
+                    filasConProductos.push({
+                        "ID Separado": `#${s.id}`,
+                        "Fecha Creación": fechaCreacionFmt,
+                        "Cliente": cliente,
+                        "Documento Cliente": documento,
+                        "Cajero": cajero,
+                        "Estado": s.estado || "Pendiente",
+                        "Referencia Producto": "—",
+                        "Producto": "Sin productos detallados",
+                        "Cantidad": 0,
+                        "Precio Unitario ($)": 0,
+                        "Subtotal Producto ($)": 0,
+                        "Total Separado ($)": totalSep,
+                        "Total Abonado ($)": totalAbonado,
+                        "Saldo Pendiente ($)": saldoPend
+                    });
+                } else {
+                    items.forEach((it: any) => {
+                        const cant = Number(it.qty ?? it.cantidad) || 0;
+                        const precioUnd = Number(it.precio_venta ?? it.precio_unitario ?? it.valor_venta ?? 0);
+                        filasConProductos.push({
+                            "ID Separado": `#${s.id}`,
+                            "Fecha Creación": fechaCreacionFmt,
+                            "Cliente": cliente,
+                            "Documento Cliente": documento,
+                            "Cajero": cajero,
+                            "Estado": s.estado || "Pendiente",
+                            "Referencia Producto": it.referencia || it.codigo || "S/R",
+                            "Producto": it.nombre || "Producto",
+                            "Cantidad": cant,
+                            "Precio Unitario ($)": precioUnd,
+                            "Subtotal Producto ($)": cant * precioUnd,
+                            "Total Separado ($)": totalSep,
+                            "Total Abonado ($)": totalAbonado,
+                            "Saldo Pendiente ($)": saldoPend
+                        });
+                    });
+                }
+            });
+
+            // Hoja de Historial de Abonos
+            const filasAbonos = abonosFiltrados.map((a: any) => {
+                const esDev = Number(a.monto) < 0 || String(a.metodo_pago).toLowerCase().includes("devolución");
+                const esAnulado = String(a.separado_estado).toLowerCase() === "anulado";
+                return {
+                    "ID Abono": a.id,
+                    "Separado #": `#${a.separado_id}`,
+                    "Fecha / Hora Abono": a.fecha_pago
+                        ? new Date(a.fecha_pago).toLocaleString("es-CO", { timeZone: "America/Bogota" })
+                        : "",
+                    "Cliente": a.cliente_nombre || "Cliente General",
+                    "Documento": a.cliente_documento || "",
+                    "Teléfono": a.cliente_telefono || "",
+                    "Cajero": a.cajero_nombre || "Sistema",
+                    "Tipo Movimiento": esDev ? "DEVOLUCIÓN" : "ABONO",
+                    "Método de Pago": a.metodo_pago || "Efectivo",
+                    "Monto ($)": Number(a.monto ?? 0),
+                    "Total Separado ($)": Number(a.separado_total ?? 0),
+                    "Saldo Pendiente ($)": esAnulado ? 0 : Number(a.saldo_pendiente ?? 0),
+                    "Estado Separado": a.separado_estado || "Pendiente"
+                };
+            });
+
+            const wb = XLSX.utils.book_new();
+
+            if (modoExportacion === 'separados') {
+                const wsProd = XLSX.utils.json_to_sheet(filasConProductos);
+                ajustarColumnas(wsProd, filasConProductos);
+                XLSX.utils.book_append_sheet(wb, wsProd, "Separados y Productos");
+
+                const wsRes = XLSX.utils.json_to_sheet(filasResumenSeparados);
+                ajustarColumnas(wsRes, filasResumenSeparados);
+                XLSX.utils.book_append_sheet(wb, wsRes, "Resumen Separados");
+
+                if (filasAbonos.length > 0) {
+                    const wsAb = XLSX.utils.json_to_sheet(filasAbonos);
+                    ajustarColumnas(wsAb, filasAbonos);
+                    XLSX.utils.book_append_sheet(wb, wsAb, "Historial Abonos");
+                }
+            } else {
+                const wsAb = XLSX.utils.json_to_sheet(filasAbonos);
+                ajustarColumnas(wsAb, filasAbonos);
+                XLSX.utils.book_append_sheet(wb, wsAb, "Historial Abonos");
+
+                if (filasConProductos.length > 0) {
+                    const wsProd = XLSX.utils.json_to_sheet(filasConProductos);
+                    ajustarColumnas(wsProd, filasConProductos);
+                    XLSX.utils.book_append_sheet(wb, wsProd, "Separados y Productos");
+                }
+                if (filasResumenSeparados.length > 0) {
+                    const wsRes = XLSX.utils.json_to_sheet(filasResumenSeparados);
+                    ajustarColumnas(wsRes, filasResumenSeparados);
+                    XLSX.utils.book_append_sheet(wb, wsRes, "Resumen Separados");
+                }
+            }
+
+            const etiquetaRango = fechaDesde && fechaHasta
+                ? `${fechaDesde}_al_${fechaHasta}`
+                : (fechaDesde || fechaHasta || "Historico_Completo");
+            const prefijoArchivo = modoExportacion === 'separados' ? 'Separados_Productos' : 'Historial_Abonos_Separados';
+            XLSX.writeFile(wb, `${prefijoArchivo}_${etiquetaRango}.xlsx`);
+            onClose();
+        } catch (err: any) {
+            console.error("Error exportando separados:", err);
+            setError(err?.response?.data?.error ?? "Error al exportar separados. Intente nuevamente.");
+        } finally {
+            setExportando(false);
+        }
+    };
+
+    const columnasMostrar = modoExportacion === 'separados'
+        ? ["ID Separado", "Fecha Creación", "Cliente", "Documento", "Cajero", "Estado", "Referencia", "Producto", "Cantidad", "Precio Unit.", "Subtotal", "Total Separado", "Total Abonado", "Saldo Pendiente"]
+        : ["ID Abono", "Separado #", "Fecha / Hora", "Cliente", "Documento", "Teléfono", "Cajero", "Método Pago", "Monto", "Total Separado", "Saldo Pendiente", "Estado"];
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+
+                {/* Header */}
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-emerald-50 to-white">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center text-xl">📦</div>
+                        <div>
+                            <h3 className="text-lg font-bold text-slate-800 tracking-tight">Exportar Separados</h3>
+                            <p className="text-[11px] text-slate-400 font-medium">Exportar separados, productos y abonos a Excel (.xlsx)</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors"
+                    >✕</button>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-5">
+                    {/* Selector de Tipo de Exportación */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                            🗂️ Datos a Exportar
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => { setModoExportacion('separados'); setError(null); }}
+                                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                    modoExportacion === 'separados'
+                                        ? 'bg-white text-emerald-700 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <span>📦</span>
+                                <span>Separados y Productos</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { setModoExportacion('abonos'); setError(null); }}
+                                className={`py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                    modoExportacion === 'abonos'
+                                        ? 'bg-white text-emerald-700 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <span>💰</span>
+                                <span>Historial de Abonos</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Rango de Fechas */}
+                    <div className="space-y-3">
+                        <label className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                            📅 Rango de Fechas {!fechaDesde && !fechaHasta ? '(Histórico Completo)' : ''}
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Desde</label>
+                                <input
+                                    type="date"
+                                    value={fechaDesde}
+                                    onChange={e => setFechaDesde(e.target.value)}
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all text-sm font-semibold text-slate-700"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Hasta</label>
+                                <input
+                                    type="date"
+                                    value={fechaHasta}
+                                    onChange={e => setFechaHasta(e.target.value)}
+                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all text-sm font-semibold text-slate-700"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Accesos rápidos de fecha */}
+                        <div className="flex gap-2 flex-wrap">
+                            {[
+                                { label: "Hoy", action: () => { setFechaDesde(hoyStr); setFechaHasta(hoyStr); } },
+                                {
+                                    label: "Esta semana", action: () => {
+                                        const d = new Date();
+                                        const day = d.getDay() || 7;
+                                        const lunes = new Date(d); lunes.setDate(d.getDate() - day + 1);
+                                        const fmt = (dt: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(dt);
+                                        setFechaDesde(fmt(lunes)); setFechaHasta(hoyStr);
+                                    }
+                                },
+                                {
+                                    label: "Este mes", action: () => {
+                                        const d = new Date();
+                                        const primeroDiaMes = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' })
+                                            .format(new Date(d.getFullYear(), d.getMonth(), 1));
+                                        setFechaDesde(primeroDiaMes); setFechaHasta(hoyStr);
+                                    }
+                                },
+                                { label: "Todo el histórico", action: () => { setFechaDesde(""); setFechaHasta(""); } },
+                            ].map(btn => (
+                                <button
+                                    key={btn.label}
+                                    type="button"
+                                    onClick={btn.action}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 border border-transparent text-slate-600 rounded-xl text-[11px] font-bold transition-all"
+                                >
+                                    {btn.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Info de columnas exportadas */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                            Columnas que se exportarán ({modoExportacion === 'separados' ? 'Separados + Productos' : 'Historial de Abonos'})
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                            {columnasMostrar.map(col => (
+                                <span key={col} className="px-2 py-0.5 bg-white border border-slate-200 rounded-lg text-[10px] font-medium text-slate-600">
+                                    {col}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Preview / conteo */}
+                    {preview !== null && (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                            <span className="text-emerald-600 text-lg">📋</span>
+                            <p className="text-xs font-semibold text-emerald-700">
+                                Se encontraron <strong>{preview}</strong> {modoExportacion === 'separados' ? 'separados' : 'abonos'} en el rango seleccionado.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Error */}
+                    {error && (
+                        <div className="flex items-center gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                            <span className="text-rose-500 text-lg">⚠️</span>
+                            <p className="text-xs font-semibold text-rose-600">{error}</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer / Acción */}
+                <div className="p-6 border-t border-slate-100 bg-slate-50/50">
+                    <button
+                        onClick={handleExportar}
+                        disabled={exportando}
+                        className="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold uppercase tracking-widest text-sm hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-100 flex items-center justify-center gap-2"
+                    >
+                        {exportando ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                Exportando...
+                            </>
+                        ) : (
+                            <>
+                                <span>📥</span>
+                                Descargar Excel ({modoExportacion === 'separados' ? 'Separados' : 'Abonos'})
+                            </>
+                        )}
+                    </button>
+                    <p className="text-center text-[10px] text-slate-400 mt-2 font-medium uppercase tracking-widest">
+                        El archivo se descargará automáticamente en tu equipo
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 function ModalCambioProducto({ factura, detalles, onClose, onExito }: any) {
     const [productoDevueltoId, setProductoDevueltoId] = useState<number | "">("");
@@ -209,6 +1200,10 @@ function Facturas() {
     const [totalPages, setTotalPages] = useState(1);
     const [totalRecords, setTotalRecords] = useState(0);
     const limit = 20;
+
+    // Modal exportar Excel
+    const [modalExportar, setModalExportar] = useState(false);
+    const [modalExportarSeparados, setModalExportarSeparados] = useState(false);
 
     // Menu options state
     const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
@@ -499,15 +1494,26 @@ function Facturas() {
                         </h1>
                         <p className="text-slate-500 font-medium text-lg italic">Control total de comprobantes y auditoría de transacciones.</p>
                     </div>
-                    <div className="w-full md:w-auto relative group">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors">🔍</span>
-                        <input
-                            type="text"
-                            placeholder="Buscar por ID o cliente..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full md:w-80 pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all font-medium text-slate-700"
-                        />
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="relative group flex-1 md:flex-none">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors">🔍</span>
+                            <input
+                                type="text"
+                                placeholder="Buscar por ID o cliente..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full md:w-80 pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all font-medium text-slate-700"
+                            />
+                        </div>
+                        {/* Botón Exportar Excel */}
+                        <button
+                            onClick={() => setModalExportar(true)}
+                            className="flex items-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-emerald-100 whitespace-nowrap"
+                            title="Exportar facturas de venta a Excel"
+                        >
+                            <span>📥</span>
+                            <span>Exportar Excel</span>
+                        </button>
                     </div>
                 </div>
 
@@ -634,6 +1640,11 @@ function Facturas() {
                                                             <div key={i} className="flex justify-between items-center p-4 bg-white border border-slate-100 rounded-[20px] shadow-sm">
                                                                 <div className="min-w-0">
                                                                     <p className="text-sm font-semibold text-slate-900 uppercase truncate mb-0.5">{d.nombre}</p>
+                                                                    {(d.codigo || d.codigo_barras || d.referencia) && (
+                                                                        <p className="text-[10px] text-indigo-400 font-mono font-semibold tracking-wider mb-0.5">
+                                                                            # {d.codigo || d.codigo_barras || d.referencia}
+                                                                        </p>
+                                                                    )}
                                                                     <p className="text-[11px] text-slate-500 font-medium">{d.cantidad} unidades x {formatCOP(d.precio_unitario)}</p>
                                                                 </div>
                                                                 <div className="text-right ml-4">
@@ -748,6 +1759,14 @@ function Facturas() {
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setModalExportarSeparados(true)}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md shadow-emerald-100 whitespace-nowrap"
+                                    title="Exportar separados y abonos a Excel"
+                                >
+                                    <span>📥</span>
+                                    <span>Exportar Excel</span>
+                                </button>
                                 <button
                                     onClick={() => fetchHistorialAbonos()}
                                     className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 rounded-xl text-xs font-bold uppercase tracking-wider text-slate-700 hover:text-indigo-600 shadow-sm transition-all"
@@ -1205,6 +2224,20 @@ function Facturas() {
                         setCambioData(null);
                         fetchFacturas();
                     }}
+                />
+            )}
+
+            {/* Modal Exportar Facturas a Excel */}
+            {modalExportar && (
+                <ModalExportarFacturas onClose={() => setModalExportar(false)} />
+            )}
+
+            {/* Modal Exportar Separados a Excel */}
+            {modalExportarSeparados && (
+                <ModalExportarSeparados
+                    onClose={() => setModalExportarSeparados(false)}
+                    initialDesde={fechaDesdeAbono}
+                    initialHasta={fechaHastaAbono}
                 />
             )}
 
