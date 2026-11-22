@@ -94,6 +94,23 @@ function PanelAdministracion() {
            </section>
         )}
 
+        {/* Canales Digitales y Tienda Online */}
+        <section className="animate-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-2 h-8 bg-purple-600 rounded-full"></div>
+            <h2 className="text-xl font-black uppercase tracking-[0.2em] text-slate-800">🌐 Canales Digitales</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <AdminCard 
+              to="/tienda-admin" icon="🛍️" title="Tu Tienda en Línea" 
+              desc="Activa tu catálogo web, selecciona productos de tu inventario físico y publica tu enlace para recibir pedidos." 
+              color="indigo" 
+              module="configuracion"
+              highlight 
+            />
+          </div>
+        </section>
+
         {/* Intelligence & Finance */}
         {(canSeeAnalytics || canSeeFinances) && (
           <section className="animate-in slide-in-from-bottom-4 delay-100 duration-500">

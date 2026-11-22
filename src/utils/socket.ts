@@ -1,12 +1,15 @@
-
 import { io } from "socket.io-client";
 import { API_BASE_URL } from "../config/runtime";
 
 let empresaRoomId: string | number | null = null;
 
-export const socket = io(API_BASE_URL, {
+export const socket = io(API_BASE_URL || undefined, {
   autoConnect: true,
-  reconnection: true
+  reconnection: true,
+  auth: (cb) => {
+    const token = localStorage.getItem("adminToken") || "";
+    cb({ token });
+  }
 });
 
 const joinCurrentEmpresaRoom = () => {
@@ -31,6 +34,12 @@ socket.on("connect_error", (error) => {
 export const joinEmpresaRoom = (empresaId: string | number) => {
   if (empresaId) {
     empresaRoomId = empresaId;
-    joinCurrentEmpresaRoom();
+    const token = localStorage.getItem("adminToken") || "";
+    socket.auth = { token };
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      joinCurrentEmpresaRoom();
+    }
   }
 };
