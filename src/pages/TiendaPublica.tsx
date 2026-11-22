@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { API_BASE_URL } from "../config/runtime";
@@ -305,8 +305,10 @@ export default function TiendaPublica() {
   }, [productos, categoriaActiva, busqueda, orden]);
 
   // Checkout submit
+  const enviandoRef=useRef(false);
   const handleCrearPedido = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(enviandoRef.current)return;
     if (!formNombre.trim() || !formTelefono.trim()) {
       setErrorCheckout("Por favor completa tu nombre y número de WhatsApp.");
       return;
@@ -320,10 +322,9 @@ export default function TiendaPublica() {
       return;
     }
 
+    enviandoRef.current=true;
     setEnviandoPedido(true);
     setErrorCheckout(null);
-
-    const claveIdempotencia = `idem_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     try {
       const payload = {
@@ -338,16 +339,22 @@ export default function TiendaPublica() {
         ]
           .filter(Boolean)
           .join(" | ") || undefined,
-        clave_idempotencia: claveIdempotencia,
         items: carrito.map((i) => ({
           producto_id: i.producto.producto_id,
           cantidad: i.cantidad,
-        })),
+        })).sort((a,b)=>a.producto_id-b.producto_id),
       };
-
-      const res = await publicApi.post(`/tienda-publica/${slug}/pedidos`, payload);
+      const storageKey=`tienda_checkout_${slug}`;
+      const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(payload)));
+      const huella=Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,"0")).join("");
+      const anterior=JSON.parse(sessionStorage.getItem(storageKey)||"null");
+      const clave=anterior?.huella===huella?anterior.clave:crypto.randomUUID();
+      sessionStorage.setItem(storageKey,JSON.stringify({huella,clave}));
+      const res = await publicApi.post(`/tienda-publica/${slug}/pedidos`, {...payload,clave_idempotencia:clave});
       if (res.data.ok && res.data.pedido) {
         setCarrito([]);
+        sessionStorage.removeItem(`tienda_cart_${slug}`);
+        sessionStorage.removeItem(storageKey);
         setCheckoutModalOpen(false);
         setCartDrawerOpen(false);
 
@@ -360,6 +367,7 @@ export default function TiendaPublica() {
       const msg = err.response?.data?.mensaje || "No se pudo procesar tu orden. Por favor intenta de nuevo.";
       setErrorCheckout(msg);
     } finally {
+      enviandoRef.current=false;
       setEnviandoPedido(false);
     }
   };
