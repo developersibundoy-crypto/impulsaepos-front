@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import { socket } from "../utils/socket";
+import { hasAccess } from "../utils/auth";
 
 interface Tienda {
   id: number;
@@ -74,13 +75,29 @@ interface PedidoWeb {
 }
 
 export default function TiendaAdmin() {
-  const [activeTab, setActiveTab] = useState<"config" | "productos" | "pedidos" | "preview">("config");
+  // Solo oculta opciones; el backend es quien autoriza cada operación.
+  const puedeAdministrar = hasAccess("tienda_admin");
+  const [activeTab, setActiveTab] = useState<"config" | "productos" | "pagos" | "pedidos" | "preview">(puedeAdministrar ? "config" : "pedidos");
   const [tienda, setTienda] = useState<Tienda | null>(null);
   const [contrato, setContrato] = useState<Contrato | null>(null);
   const [vigente, setVigente] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "success" | "error"; texto: string } | null>(null);
+
+  // Wompi Pasarela state
+  const [wompiActivo, setWompiActivo] = useState(false);
+  const [wompiAmbiente, setWompiAmbiente] = useState<"sandbox" | "produccion">("sandbox");
+  const [wompiPublicKey, setWompiPublicKey] = useState("");
+  const [wompiIntegritySecret, setWompiIntegritySecret] = useState("");
+  const [wompiEventSecret, setWompiEventSecret] = useState("");
+  const [wompiIntegrityEnmascarado, setWompiIntegrityEnmascarado] = useState("");
+  const [wompiEventEnmascarado, setWompiEventEnmascarado] = useState("");
+  const [tieneIntegritySecret, setTieneIntegritySecret] = useState(false);
+  const [tieneEventSecret, setTieneEventSecret] = useState(false);
+  const [wompiWebhookUrl, setWompiWebhookUrl] = useState("");
+  const [savingWompi, setSavingWompi] = useState(false);
+  const [copiadoWebhook, setCopiadoWebhook] = useState(false);
 
   // Form states - Identidad y Configuración
   const [nombre, setNombre] = useState("");
@@ -114,6 +131,23 @@ export default function TiendaAdmin() {
   const [loadingPedidos, setLoadingPedidos] = useState(false);
   const [pedidoDetalle, setPedidoDetalle] = useState<PedidoWeb | null>(null);
 
+  const cargarPagosConfig = async () => {
+    if (!puedeAdministrar) return;
+    try {
+      const { data } = await API.get("/tienda-admin/mi-tienda/pagos-config");
+      setWompiActivo(Boolean(data.activo));
+      setWompiAmbiente(data.ambiente || "sandbox");
+      setWompiPublicKey(data.public_key || "");
+      setWompiIntegrityEnmascarado(data.integrity_secret_enmascarado || "");
+      setWompiEventEnmascarado(data.event_secret_enmascarado || "");
+      setTieneIntegritySecret(Boolean(data.tiene_integrity_secret));
+      setTieneEventSecret(Boolean(data.tiene_event_secret));
+      setWompiWebhookUrl(data.webhook_url || "");
+    } catch (e) {
+      console.error("Error cargando configuración de pagos:", e);
+    }
+  };
+
   const cargarTienda = async () => {
     try {
       setLoading(true);
@@ -134,6 +168,7 @@ export default function TiendaAdmin() {
       }
       setContrato(data.contrato);
       setVigente(Boolean(data.vigente));
+      await cargarPagosConfig();
     } catch (err: any) {
       setMsg({ tipo: "error", texto: err.response?.data?.error || "Error al cargar la tienda." });
     } finally {
@@ -240,6 +275,37 @@ export default function TiendaAdmin() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleGuardarWompi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingWompi(true);
+    setMsg(null);
+    try {
+      const payload = {
+        activo: wompiActivo,
+        ambiente: wompiAmbiente,
+        public_key: wompiPublicKey.trim(),
+        integrity_secret: wompiIntegritySecret.trim() || undefined,
+        event_secret: wompiEventSecret.trim() || undefined
+      };
+      const { data } = await API.put("/tienda-admin/mi-tienda/pagos-config", payload);
+      setMsg({ tipo: "success", texto: data.message || "Configuración de Wompi guardada con éxito." });
+      setWompiIntegritySecret("");
+      setWompiEventSecret("");
+      await cargarPagosConfig();
+    } catch (err: any) {
+      setMsg({ tipo: "error", texto: err.response?.data?.error || "Error al guardar la configuración de Wompi." });
+    } finally {
+      setSavingWompi(false);
+    }
+  };
+
+  const copiarWebhook = () => {
+    if (!wompiWebhookUrl) return;
+    navigator.clipboard.writeText(wompiWebhookUrl);
+    setCopiadoWebhook(true);
+    setTimeout(() => setCopiadoWebhook(false), 2500);
   };
 
   const handleCambiarEstado = async (nuevoEstado: "publicada" | "pausada" | "borrador") => {
@@ -379,7 +445,7 @@ export default function TiendaAdmin() {
             </button>
           )}
 
-          {tienda?.estado === "publicada" ? (
+          {puedeAdministrar && (tienda?.estado === "publicada" ? (
             <button
               onClick={() => handleCambiarEstado("pausada")}
               className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-black rounded-xl uppercase tracking-wider transition-all shadow-md"
@@ -393,7 +459,7 @@ export default function TiendaAdmin() {
             >
               🚀 Publicar Tienda
             </button>
-          )}
+          ))}
         </div>
       </div>
 
@@ -409,12 +475,14 @@ export default function TiendaAdmin() {
               Disfruta de 14 días completamente gratis para probar tu tienda en línea integrada con tu inventario sin costo adicional.
             </p>
           </div>
-          <button
-            onClick={handleActivarPrueba}
-            className="px-6 py-3 bg-amber-400 hover:bg-amber-300 text-indigo-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-transform hover:scale-105"
-          >
-            🎁 Activar 14 Días Gratis
-          </button>
+          {puedeAdministrar && (
+            <button
+              onClick={handleActivarPrueba}
+              className="px-6 py-3 bg-amber-400 hover:bg-amber-300 text-indigo-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-transform hover:scale-105"
+            >
+              🎁 Activar 14 Días Gratis
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center justify-between text-xs text-emerald-900">
@@ -447,26 +515,51 @@ export default function TiendaAdmin() {
 
       {/* Navegación por Pestañas */}
       <div className="flex border-b border-slate-200 gap-2 overflow-x-auto scrollbar-none">
-        <button
-          onClick={() => setActiveTab("config")}
-          className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
-            activeTab === "config"
-              ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
-              : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          ⚙️ 1. Identidad & Enlace
-        </button>
-        <button
-          onClick={() => setActiveTab("productos")}
-          className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
-            activeTab === "productos"
-              ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
-              : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          📦 2. Catálogo Publicable ({tienda?.productos_publicados || 0})
-        </button>
+        {puedeAdministrar && (
+          <button
+            onClick={() => setActiveTab("config")}
+            className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === "config"
+                ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            ⚙️ 1. Identidad & Enlace
+          </button>
+        )}
+        {puedeAdministrar && (
+          <button
+            onClick={() => setActiveTab("productos")}
+            className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === "productos"
+                ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            📦 2. Catálogo Publicable ({tienda?.productos_publicados || 0})
+          </button>
+        )}
+        {puedeAdministrar && (
+          <button
+            onClick={() => setActiveTab("pagos")}
+            className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === "pagos"
+                ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <span>💳 3. Pasarela Wompi</span>
+            {wompiActivo ? (
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-full text-[10px] font-black">
+                ACTIVO
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold">
+                Inactivo
+              </span>
+            )}
+          </button>
+        )}
         <button
           onClick={() => setActiveTab("pedidos")}
           className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
@@ -475,23 +568,25 @@ export default function TiendaAdmin() {
               : "border-transparent text-slate-500 hover:text-slate-800"
           }`}
         >
-          <span>📑 3. Pedidos Web</span>
+          <span>📑 4. Pedidos Web</span>
           {pedidosNuevosOpendientes > 0 && (
             <span className="px-2 py-0.5 bg-rose-600 text-white rounded-full text-[10px] font-black animate-pulse">
               {pedidosNuevosOpendientes}
             </span>
           )}
         </button>
-        <button
-          onClick={() => setActiveTab("preview")}
-          className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
-            activeTab === "preview"
-              ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
-              : "border-transparent text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          👁️ 4. Vista Previa Tienda
-        </button>
+        {puedeAdministrar && (
+          <button
+            onClick={() => setActiveTab("preview")}
+            className={`px-5 py-3 text-xs sm:text-sm font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === "preview"
+                ? "border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-xl"
+                : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            👁️ 5. Vista Previa Tienda
+          </button>
+        )}
       </div>
 
       {/* TAB 1: Configuración de Identidad y Logística */}
@@ -756,7 +851,191 @@ export default function TiendaAdmin() {
         </div>
       )}
 
-      {/* TAB 3: BANDEJA DE PEDIDOS EN LÍNEA */}
+      {/* TAB 3: PASARELA DE PAGOS WOMPI */}
+      {activeTab === "pagos" && (
+        <form onSubmit={handleGuardarWompi} className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 space-y-8">
+          {/* Header informativo */}
+          <div className="border-b border-slate-100 pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">💳</span>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">Pasarela de Pagos Wompi</h3>
+                <span className="px-2.5 py-0.5 text-[10px] font-black uppercase rounded-full tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                  PSE • Tarjetas • Nequi • Bancolombia
+                </span>
+              </div>
+              <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-2xl">
+                Conecta tu propia cuenta de Wompi para que el dinero de las ventas de tu tienda en línea ingrese <strong>directamente a tu cuenta bancaria</strong>.
+              </p>
+            </div>
+            <a
+              href="https://comercios.wompi.co"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl flex items-center gap-2 border border-slate-300 transition-all"
+            >
+              🔗 Ir a mi Panel Wompi
+            </a>
+          </div>
+
+          {/* Toggle Activar e Indicador */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-black text-slate-900 block">
+                  Habilitar pagos en línea con Wompi
+                </label>
+                <span className="text-xs text-slate-500">
+                  Permite a tus clientes pagar directamente desde el checkout web.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWompiActivo(!wompiActivo)}
+                className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  wompiActivo ? "bg-emerald-600" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    wompiActivo ? "translate-x-7" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
+                Ambiente de la Pasarela
+              </label>
+              <select
+                value={wompiAmbiente}
+                onChange={(e) => setWompiAmbiente(e.target.value as "sandbox" | "produccion")}
+                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="sandbox">🧪 Modo Pruebas (Sandbox)</option>
+                <option value="produccion">🚀 Modo Producción (Cobros Reales)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Credenciales Wompi */}
+          <div className="space-y-6">
+            <div className="border-l-4 border-indigo-600 pl-4 py-1">
+              <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+                Llaves API de tu comercio en Wompi
+              </h4>
+              <p className="text-xs text-slate-500">
+                Encuéntralas en <strong>comercios.wompi.co</strong> &gt; <strong>Desarrolladores</strong> &gt; <strong>Llaves de API</strong>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Llave Pública */}
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex justify-between items-center">
+                  <span>Llave Pública (Public Key)</span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {wompiAmbiente === "sandbox" ? "Inicia con: pub_test_..." : "Inicia con: pub_prod_..."}
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={wompiPublicKey}
+                  onChange={(e) => setWompiPublicKey(e.target.value)}
+                  placeholder={wompiAmbiente === "sandbox" ? "pub_test_Q5yDA9..." : "pub_prod_K4mJ2..."}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                />
+              </div>
+
+              {/* Secreto de Integridad */}
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex justify-between items-center">
+                  <span>Secreto de Integridad (Integrity Secret)</span>
+                  {tieneIntegritySecret && (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      ✓ Configurado ({wompiIntegrityEnmascarado})
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="password"
+                  value={wompiIntegritySecret}
+                  onChange={(e) => setWompiIntegritySecret(e.target.value)}
+                  placeholder={tieneIntegritySecret ? "Dejar vacío para no cambiar" : (wompiAmbiente === "sandbox" ? "test_integrity_..." : "prod_integrity_...")}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span className="text-[10px] text-slate-400 block">
+                  Blindaje obligatorio: se usa en backend para garantizar que nadie altere precios.
+                </span>
+              </div>
+
+              {/* Secreto de Eventos */}
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex justify-between items-center">
+                  <span>Secreto de Eventos (Event Secret)</span>
+                  {tieneEventSecret && (
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                      ✓ Configurado ({wompiEventEnmascarado})
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="password"
+                  value={wompiEventSecret}
+                  onChange={(e) => setWompiEventSecret(e.target.value)}
+                  placeholder={tieneEventSecret ? "Dejar vacío para no cambiar" : (wompiAmbiente === "sandbox" ? "test_events_..." : "prod_events_...")}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span className="text-[10px] text-slate-400 block">
+                  Se usa para validar que las notificaciones de pago aprobado vengan auténticamente de Wompi.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Caja para copiar URL de Webhook */}
+          <div className="bg-indigo-50/60 p-6 rounded-2xl border border-indigo-100 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">⚡</span>
+              <h4 className="text-xs font-black uppercase tracking-wider text-indigo-950">
+                Paso Importante: Registra tu URL de Eventos (Webhook) en Wompi
+              </h4>
+            </div>
+            <p className="text-xs text-indigo-800">
+              Para que el sistema sepa en automático cuando un cliente pagó con éxito y confirme el pedido, copia este enlace y pégalo en tu panel de Wompi (<strong>Desarrolladores &gt; Eventos &gt; URL de Eventos</strong>):
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={wompiWebhookUrl}
+                className="w-full px-4 py-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-mono font-bold text-indigo-900 select-all"
+              />
+              <button
+                type="button"
+                onClick={copiarWebhook}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all whitespace-nowrap shadow-sm"
+              >
+                {copiadoWebhook ? "✓ ¡Copiado!" : "📋 Copiar URL"}
+              </button>
+            </div>
+          </div>
+
+          {/* Botón de Guardado */}
+          <div className="flex justify-end pt-4 border-t border-slate-100">
+            <button
+              type="submit"
+              disabled={savingWompi}
+              className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg disabled:opacity-50"
+            >
+              {savingWompi ? "Guardando Pasarela..." : "💾 Guardar Configuración Wompi"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* TAB 4: BANDEJA DE PEDIDOS EN LÍNEA */}
       {activeTab === "pedidos" && (
         <div className="space-y-6">
           {/* Métricas / Badges de Estados */}
@@ -985,7 +1264,7 @@ export default function TiendaAdmin() {
                       </span>
 
                       <div className="flex flex-wrap gap-2">
-                        {ped.estado === "pendiente" && (
+                        {puedeAdministrar && ped.estado === "pendiente" && (
                           <button
                             onClick={() => cambiarEstadoPedido(ped.id, "confirmado")}
                             className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black transition-all"
@@ -994,7 +1273,7 @@ export default function TiendaAdmin() {
                           </button>
                         )}
 
-                        {ped.estado === "comprobante_enviado" && (
+                        {puedeAdministrar && ped.estado === "comprobante_enviado" && (
                           <button
                             onClick={() => cambiarEstadoPedido(ped.id, "confirmado")}
                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all shadow"
@@ -1021,7 +1300,7 @@ export default function TiendaAdmin() {
                           </button>
                         )}
 
-                        {ped.estado !== "cancelado" && ped.estado !== "entregado" && (
+                        {puedeAdministrar && ped.estado !== "cancelado" && ped.estado !== "entregado" && (
                           <button
                             onClick={() => cambiarEstadoPedido(ped.id, "cancelado")}
                             className="px-3 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white rounded-xl text-xs font-black transition-all border border-rose-200"

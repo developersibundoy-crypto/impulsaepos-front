@@ -18,6 +18,8 @@ const AVAILABLE_MODULES = [
   { id: "reportes", label: "Reportes Gerenciales" },
   { id: "configuracion", label: "Perfil Empresa" },
   { id: "separados", label: "Apartados / Separados" },
+  { id: "tienda_operacion", label: "Tienda Online: Operar pedidos" },
+  { id: "tienda_admin", label: "Tienda Online: Administrar (pagos, cancelar, publicar)" },
 ];
 
 function Cajeros() {

@@ -3,7 +3,9 @@ export const PLAN_FEATURES = {
   ANALITICA_AVANZADA: "analitica_avanzada"
 };
 
-export const hasAccess = (module: string) => {
+// Acepta un módulo o alternativas separadas por '|' (basta tener una).
+export const hasAccess = (module: string): boolean => {
+  if (module.includes("|")) return module.split("|").some((m) => hasAccess(m.trim()));
   const role = localStorage.getItem("adminRole");
   const permisos = localStorage.getItem("adminPermisos");
   

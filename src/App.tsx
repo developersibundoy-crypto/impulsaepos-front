@@ -180,7 +180,7 @@ const Navigation = () => {
             <NavLink to="/" label="Venta General" emoji="🏪" module="venta" />
             <NavLink to="/mayoristas" label="Mayoristas" emoji="🚛" module="mayoristas" activeClass="bg-sky-50 text-sky-700 border border-sky-100 shadow-sm" />
             <NavLink to="/facturacion-electronica" label="Factura Electrónica" emoji="⚡" module="facturas_venta" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA} activeClass="bg-amber-50 text-amber-700 border border-amber-100 shadow-sm" />
-            <NavLink to="/tienda-admin" label="Tienda Online" emoji="🌐" module="configuracion" activeClass="bg-purple-50 text-purple-700 border border-purple-100 shadow-sm" />
+            <NavLink to="/tienda-admin" label="Tienda Online" emoji="🌐" module="tienda_admin|tienda_operacion" activeClass="bg-purple-50 text-purple-700 border border-purple-100 shadow-sm" />
 
             <div className="h-6 w-px bg-slate-200 mx-1"></div>
             
@@ -408,7 +408,7 @@ function App() {
             <Route path="/clientes" element={<RoleRoute allowedRoles={allRoles} module="clientes"><Clientes /></RoleRoute>} />
             <Route path="/proveedores" element={<RoleRoute allowedRoles={allRoles} module="proveedores"><Proveedores /></RoleRoute>} />
             <Route path="/empresa" element={<RoleRoute allowedRoles={allRoles} module="configuracion"><ConfiguracionEmpresa /></RoleRoute>} />
-            <Route path="/tienda-admin" element={<RoleRoute allowedRoles={allRoles} module="configuracion"><TiendaAdmin /></RoleRoute>} />
+            <Route path="/tienda-admin" element={<RoleRoute allowedRoles={allRoles} module="tienda_admin|tienda_operacion"><TiendaAdmin /></RoleRoute>} />
             <Route path="/ajustes" element={<RoleRoute allowedRoles={allRoles} module="ajustes"><AjustesInventario /></RoleRoute>} />
             <Route path="/facturas" element={<RoleRoute allowedRoles={allRoles} module="facturas_venta"><Facturas /></RoleRoute>} />
             <Route path="/facturacion-electronica" element={<RoleRoute allowedRoles={allRoles} module="facturas_venta" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA}><FacturacionElectronica /></RoleRoute>} />

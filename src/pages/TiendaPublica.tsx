@@ -21,6 +21,11 @@ interface PublicStore {
   horario_atencion: string;
   banner_url?: string;
   tagline?: string;
+  wompi?: {
+    activo: boolean;
+    ambiente: "sandbox" | "produccion";
+    public_key: string;
+  } | null;
 }
 
 interface PublicProduct {
@@ -52,6 +57,8 @@ interface OrderDetail {
   total: number;
   notas_cliente?: string;
   comprobante_url?: string;
+  wompi_transaction_id?: string;
+  wompi_estado?: string;
   fecha_limite_pago?: string;
   creado_en: string;
   items: Array<{
@@ -361,6 +368,10 @@ export default function TiendaPublica() {
         const token = res.data.pedido.token_seguimiento;
         navigate(`/tienda/${slug}/pedido/${token}`);
         cargarDetallePedido(token);
+
+        if (res.data.wompi) {
+          abrirWidgetWompi(res.data.wompi, token);
+        }
       }
     } catch (err: any) {
       console.error("Error creando pedido:", err);
@@ -370,6 +381,45 @@ export default function TiendaPublica() {
       enviandoRef.current=false;
       setEnviandoPedido(false);
     }
+  };
+
+  // Abrir Widget de Wompi de forma dinámica
+  const abrirWidgetWompi = (wompi: any, token: string) => {
+    if (!wompi || !wompi.public_key) return;
+    const cargarScript = (cb: () => void) => {
+      if ((window as any).WidgetCheckout) {
+        cb();
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://checkout.wompi.co/widget.js";
+      script.async = true;
+      script.onload = () => cb();
+      document.body.appendChild(script);
+    };
+
+    cargarScript(() => {
+      try {
+        const checkout = new (window as any).WidgetCheckout({
+          currency: wompi.moneda || "COP",
+          amountInCents: wompi.monto_centavos,
+          reference: wompi.referencia,
+          publicKey: wompi.public_key,
+          signature: {
+            integrity: wompi.firma_integridad
+          },
+          redirectUrl: window.location.origin + `/tienda/${slug}/pedido/${token}`
+        });
+
+        checkout.open((result: any) => {
+          const transaction = result?.transaction;
+          console.log("[WOMPI_WIDGET] Resultado:", transaction);
+          cargarDetallePedido(token);
+        });
+      } catch (err) {
+        console.error("Error abriendo widget de Wompi:", err);
+      }
+    });
   };
 
   // Enviar comprobante
@@ -649,6 +699,53 @@ export default function TiendaPublica() {
                           </button>
                         </div>
                       </form>
+                    )}
+                  </div>
+                )}
+
+                {/* Estado de Pago Wompi */}
+                {pedidoActivo.metodo_pago === "wompi" && (
+                  <div className={`border rounded-3xl p-5 space-y-3 ${
+                    pedidoActivo.estado === "confirmado" || pedidoActivo.estado === "preparando" || pedidoActivo.estado === "listo_recogida" || pedidoActivo.estado === "entregado"
+                      ? "bg-emerald-50/80 border-emerald-200"
+                      : "bg-violet-50/80 border-violet-200"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide">
+                        {pedidoActivo.wompi_estado === "APPROVED" || pedidoActivo.estado === "confirmado" ? (
+                          <>
+                            <span className="text-emerald-700">✅</span>
+                            <span className="text-emerald-950">Pago Wompi Aprobado</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-violet-700">💳</span>
+                            <span className="text-violet-950">Pago en Línea Wompi</span>
+                          </>
+                        )}
+                      </div>
+                      {pedidoActivo.wompi_transaction_id && (
+                        <span className="text-[10px] font-mono font-bold text-slate-500 bg-white/70 px-2 py-0.5 rounded-lg border">
+                          ID: {pedidoActivo.wompi_transaction_id}
+                        </span>
+                      )}
+                    </div>
+
+                    {pedidoActivo.estado === "pendiente" ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-violet-900">
+                          Tu orden está registrada y el inventario reservado temporalmente a la espera de confirmación de tu pago.
+                        </p>
+                        {pedidoActivo.wompi_estado === "DECLINED" && (
+                          <div className="p-2.5 bg-rose-100 border border-rose-200 text-rose-900 rounded-xl text-xs font-bold">
+                            ⚠️ El intento de pago fue declinado por la entidad financiera.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-emerald-900 font-medium">
+                        Tu pago fue verificado y acreditado exitosamente. La tienda ya tiene tu pedido en cola de preparación.
+                      </p>
                     )}
                   </div>
                 )}
@@ -1532,7 +1629,25 @@ export default function TiendaPublica() {
               {/* Sección 3: Forma de Pago */}
               <div>
                 <label className="text-xs font-bold text-zinc-700 block mb-1">Forma de Pago</label>
-                <div className="grid grid-cols-2 gap-2 text-xs font-bold">
+                <div className={`grid ${tienda.wompi?.activo ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"} gap-2 text-xs font-bold`}>
+                  {tienda.wompi?.activo && (
+                    <button
+                      type="button"
+                      onClick={() => setFormMetodoPago("wompi")}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        formMetodoPago === "wompi"
+                          ? "bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-500/20 shadow-sm"
+                          : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="block font-bold">💳 Wompi</span>
+                        <span className="px-1.5 py-0.2 text-[8px] bg-violet-600 text-white rounded font-black uppercase">Online</span>
+                      </div>
+                      <span className="text-[10px] text-zinc-400 mt-0.5 block truncate">PSE, Tarjeta, Nequi</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setFormMetodoPago("transferencia_manual")}
@@ -1542,8 +1657,8 @@ export default function TiendaPublica() {
                         : "bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100"
                     }`}
                   >
-                    <span className="block font-bold">💳 Transferencia</span>
-                    <span className="text-[10px] text-zinc-400 mt-0.5 block">Nequi / Bancolombia</span>
+                    <span className="block font-bold">🏦 Transferencia</span>
+                    <span className="text-[10px] text-zinc-400 mt-0.5 block truncate">Nequi / Bancolombia</span>
                   </button>
 
                   <button
@@ -1556,7 +1671,7 @@ export default function TiendaPublica() {
                     }`}
                   >
                     <span className="block font-bold">💵 Contraentrega</span>
-                    <span className="text-[10px] text-zinc-400 mt-0.5 block">Pagas al recibir</span>
+                    <span className="text-[10px] text-zinc-400 mt-0.5 block truncate">Pagas al recibir</span>
                   </button>
                 </div>
               </div>
