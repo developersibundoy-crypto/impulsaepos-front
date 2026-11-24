@@ -3,8 +3,8 @@ import { API_BASE_URL } from "../config/runtime";
 
 let empresaRoomId: string | number | null = null;
 
-export const socket = io(API_BASE_URL || undefined, {
-  autoConnect: true,
+export const socket = io(new URL(API_BASE_URL || "/", window.location.origin).origin, {
+  autoConnect: false,
   reconnection: true,
   auth: (cb) => {
     const token = localStorage.getItem("adminToken") || "";
@@ -22,10 +22,6 @@ socket.on("connect", () => {
   joinCurrentEmpresaRoom();
 });
 
-socket.on("reconnect", () => {
-  joinCurrentEmpresaRoom();
-});
-
 socket.on("connect_error", (error) => {
   console.error("[SOCKET] Error de conexion:", error.message);
 });
@@ -34,12 +30,26 @@ socket.on("connect_error", (error) => {
 export const joinEmpresaRoom = (empresaId: string | number) => {
   if (empresaId) {
     empresaRoomId = empresaId;
-    const token = localStorage.getItem("adminToken") || "";
-    socket.auth = { token };
-    if (!socket.connected) {
-      socket.connect();
-    } else {
-      joinCurrentEmpresaRoom();
-    }
+    joinCurrentEmpresaRoom();
   }
 };
+
+// Solo se monta en el área privada del POS, nunca en login ni en la tienda pública.
+export function iniciarSocketPOS() {
+  let tokenActivo: string | null = null;
+  const sincronizar = () => {
+    const token = localStorage.getItem("adminToken");
+    if (token !== tokenActivo) {
+      if (tokenActivo) socket.disconnect();
+      tokenActivo = token;
+      if (token) socket.connect();
+    }
+  };
+  sincronizar();
+  window.addEventListener("storage", sincronizar);
+  return () => {
+    window.removeEventListener("storage", sincronizar);
+    empresaRoomId = null;
+    socket.disconnect();
+  };
+}

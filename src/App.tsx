@@ -1,4 +1,5 @@
 import React from "react";
+import { iniciarSocketPOS } from "./utils/socket";
 import TiendaPiloto from "./pages/TiendaPiloto";
 import TiendaAdmin from "./pages/TiendaAdmin";
 import TiendaPublica from "./pages/TiendaPublica";
@@ -378,6 +379,11 @@ const Navigation = () => {
   );
 };
 
+function SesionSocketPOS() {
+  React.useEffect(iniciarSocketPOS, []);
+  return null;
+}
+
 function App() {
   const allRoles = ["admin", "superadmin", "cajero"];
   const adminPlus = ["admin", "superadmin"];
@@ -394,6 +400,7 @@ function App() {
           <Route path="/tienda/:slug" element={<TiendaPublica />} />
           <Route path="*" element={
             <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
+              <SesionSocketPOS />
               <Navigation />
               <ModalLanzamientoTienda />
               <main className="flex-1 w-full max-w-full mx-auto p-4 sm:p-6 lg:p-8 animate-in fade-in duration-500">
