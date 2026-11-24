@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import { 
@@ -10,6 +11,7 @@ function Dashboard() {
   const [datos, setDatos] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saasState, setSaasState] = useState<any>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(() => sessionStorage.getItem('dismiss_promo_tienda_dashboard') === 'true');
 
   useEffect(() => {
     API.get("/dashboard/resumen")
@@ -71,6 +73,42 @@ function Dashboard() {
           </div>
           <div className="scale-75 origin-right">
              <WompiCheckout reference={`SUB_${localStorage.getItem('empresa_id')}_${Date.now()}`} amountInCents={7000000} />
+          </div>
+        </div>
+      )}
+
+      {/* Banner Promocional Tienda en Línea */}
+      {!bannerDismissed && (
+        <div className="relative overflow-hidden bg-gradient-to-r from-purple-950 via-indigo-900 to-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-lg mb-8 border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+             <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-xl flex-shrink-0">
+               🛍️
+             </div>
+             <div>
+               <div className="flex items-center gap-2">
+                 <span className="text-[9px] bg-emerald-500 text-slate-950 font-black px-1.5 py-0.5 rounded uppercase">✨ NUEVO</span>
+                 <p className="text-sm font-extrabold text-white">¿Ya activaste tu Tienda en Línea?</p>
+               </div>
+               <p className="text-xs text-slate-300 mt-0.5">Publica tus productos a internet en 1 clic y recibe pedidos 24/7. Incluye 14 días gratis de prueba.</p>
+             </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-shrink-0">
+            <Link
+              to="/tienda-admin"
+              className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow transition"
+            >
+              Configurar Tienda →
+            </Link>
+            <button
+              onClick={() => {
+                sessionStorage.setItem('dismiss_promo_tienda_dashboard', 'true');
+                setBannerDismissed(true);
+              }}
+              className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded"
+              title="Cerrar aviso"
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}

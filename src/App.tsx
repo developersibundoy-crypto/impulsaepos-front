@@ -40,6 +40,7 @@ import { CajaProvider, useCaja } from "./components/CajaContext";
 import { ControlCajaWrapper } from "./components/ControlCajaWrapper";
 import { CierreCajaModal, MovimientoCajaModal } from "./components/CajaModals";
 import PlanRestrictionModal from "./components/PlanRestrictionModal";
+import ModalLanzamientoTienda from "./components/ModalLanzamientoTienda";
 import { usePlan } from "./hooks/usePlan";
 import API from "./api/api";
 
@@ -118,7 +119,7 @@ const Navigation = () => {
   };
 
 
-  const NavLink = ({ to, label, emoji, activeClass, module, planFeature }: any) => {
+  const NavLink = ({ to, label, emoji, activeClass, module, planFeature, badge }: any) => {
     const hasModuleAccess = module ? hasAccess(module) : true;
     const hasFeatureAccess = planFeature ? hasPlanFeature(planFeature) : true;
 
@@ -143,14 +144,19 @@ const Navigation = () => {
       <Link 
         to={hasModuleAccess ? to : "#"} 
         onClick={handleClick}
-        className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center gap-3 ${
+        className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center gap-2.5 relative ${
           location.pathname === to 
             ? activeClass || "bg-slate-100 text-slate-900 shadow-sm" 
             : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
         } ${!hasModuleAccess ? "opacity-60 grayscale-[0.5] cursor-not-allowed" : ""}`}
       >
         <span className="text-lg">{emoji}</span>
-        {label}
+        <span>{label}</span>
+        {badge && (
+          <span className="text-[8px] bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider animate-pulse shadow-sm shadow-purple-500/30">
+            {badge}
+          </span>
+        )}
         {!hasModuleAccess && (
           <span className="ml-auto text-[10px]">🔒</span>
         )}
@@ -180,7 +186,7 @@ const Navigation = () => {
             <NavLink to="/" label="Venta General" emoji="🏪" module="venta" />
             <NavLink to="/mayoristas" label="Mayoristas" emoji="🚛" module="mayoristas" activeClass="bg-sky-50 text-sky-700 border border-sky-100 shadow-sm" />
             <NavLink to="/facturacion-electronica" label="Factura Electrónica" emoji="⚡" module="facturas_venta" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA} activeClass="bg-amber-50 text-amber-700 border border-amber-100 shadow-sm" />
-            <NavLink to="/tienda-admin" label="Tienda Online" emoji="🌐" module="tienda_admin|tienda_operacion" activeClass="bg-purple-50 text-purple-700 border border-purple-100 shadow-sm" />
+            <NavLink to="/tienda-admin" label="Tienda Online" emoji="🌐" badge="✨ NUEVO" module="tienda_admin|tienda_operacion" activeClass="bg-purple-50 text-purple-700 border border-purple-100 shadow-sm" />
 
             <div className="h-6 w-px bg-slate-200 mx-1"></div>
             
@@ -308,6 +314,7 @@ const Navigation = () => {
            <NavLink to="/" label="Venta General" emoji="🏪" module="venta" />
            <NavLink to="/mayoristas" label="Distribución Mayorista" emoji="🚛" module="mayoristas" activeClass="bg-sky-50 text-sky-700 border border-sky-100 shadow-sm" />
            <NavLink to="/facturacion-electronica" label="Factura Electrónica" emoji="⚡" module="facturas_venta" planFeature={PLAN_FEATURES.FACTURACION_ELECTRONICA} activeClass="bg-amber-50 text-amber-700 border border-amber-100 shadow-sm" />
+           <NavLink to="/tienda-admin" label="Tienda Online" emoji="🌐" badge="✨ NUEVO" module="tienda_admin|tienda_operacion" activeClass="bg-purple-50 text-purple-700 border border-purple-100 shadow-sm" />
            
            <NavLink 
              to="/admin" 
@@ -377,23 +384,21 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/tienda-piloto/*" element={import.meta.env.DEV ? <TiendaPiloto /> : <Navigate to="/" replace />} />
-        <Route path="/tienda/:slug/*" element={<TiendaPublica />} />
-        <Route path="/tienda/:slug" element={<TiendaPublica />} />
-        <Route path="*" element={
-          <CajaProvider>
-        <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
-          <Navigation />
-          <main className="flex-1 w-full max-w-full mx-auto p-4 sm:p-6 lg:p-8 animate-in fade-in duration-500">
+      <CajaProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/registro-saas" element={<RegistroSaaS />} />
+          <Route path="/renovacion" element={<Renovacion />} />
+          <Route path="/tienda-piloto/*" element={import.meta.env.DEV ? <TiendaPiloto /> : <Navigate to="/" replace />} />
+          <Route path="/tienda/:slug/*" element={<TiendaPublica />} />
+          <Route path="/tienda/:slug" element={<TiendaPublica />} />
+          <Route path="*" element={
+            <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
+              <Navigation />
+              <ModalLanzamientoTienda />
+              <main className="flex-1 w-full max-w-full mx-auto p-4 sm:p-6 lg:p-8 animate-in fade-in duration-500">
             <ControlCajaWrapper>
               <Routes>
-
-
-            <Route path="/login" element={<Login />} />
-            <Route path="/registro-saas" element={<RegistroSaaS />} />
-            <Route path="/renovacion" element={<Renovacion />} />
-            
             <Route path="/" element={<AdminRoute><Productos /></AdminRoute>} />
             
             {/* Permission-Protected Routes */}
@@ -430,10 +435,12 @@ function App() {
             </ControlCajaWrapper>
         </main>
       </div>
-      </CajaProvider>
-      } /></Routes>
-    </BrowserRouter>
-  );
+          } 
+        />
+      </Routes>
+    </CajaProvider>
+  </BrowserRouter>
+);
 }
 
 export default App;

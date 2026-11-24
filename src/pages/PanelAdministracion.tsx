@@ -94,22 +94,74 @@ function PanelAdministracion() {
            </section>
         )}
 
-        {/* Canales Digitales y Tienda Online */}
-        <section className="animate-in slide-in-from-bottom-4 duration-500">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-2 h-8 bg-purple-600 rounded-full"></div>
-            <h2 className="text-xl font-black uppercase tracking-[0.2em] text-slate-800">🌐 Canales Digitales</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <AdminCard 
-              to="/tienda-admin" icon="🛍️" title="Tu Tienda en Línea" 
-              desc="Activa tu catálogo web, selecciona productos de tu inventario físico y publica tu enlace para recibir pedidos." 
-              color="indigo" 
-              module="configuracion"
-              highlight 
-            />
-          </div>
-        </section>
+        {/* Canales Digitales y Tienda Online (Servicio Destacado) */}
+        {(hasAccess("tienda_admin") || hasAccess("tienda_operacion") || hasAccess("configuracion")) && (
+          <section className="animate-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-2 h-8 bg-purple-600 rounded-full"></div>
+              <h2 className="text-xl font-black uppercase tracking-[0.2em] text-slate-800">🌐 Canales Digitales & E-Commerce</h2>
+            </div>
+            
+            <div className="relative overflow-hidden bg-gradient-to-r from-slate-950 via-indigo-950 to-purple-950 rounded-3xl border border-indigo-500/30 shadow-2xl p-6 sm:p-8 text-white">
+              <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+              
+              <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                
+                <div className="space-y-4 max-w-2xl">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-black uppercase tracking-wider animate-pulse">
+                      🔥 SERVICIO ESTRELLA • 1 CLIC
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-[10px] font-bold uppercase tracking-wider">
+                      🎁 14 Días Gratis
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                      Tu Tienda en Línea Sincronizada con el POS
+                    </h3>
+                    <p className="text-slate-300 text-sm mt-1 leading-relaxed">
+                      Lleva tus productos a internet en segundos. Vende 24/7 sin sobreventas y recibe pagos con Wompi directo a tu cuenta bancaria.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 text-xs">
+                    <div className="flex items-center gap-2 text-slate-200">
+                      <span className="text-base text-emerald-400">✓</span>
+                      <span>Catálogo sincronizado</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-200">
+                      <span className="text-base text-emerald-400">✓</span>
+                      <span>Pagos directos con Wompi</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-200">
+                      <span className="text-base text-emerald-400">✓</span>
+                      <span>Pedidos directos al POS</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:items-end gap-3 w-full lg:w-auto flex-shrink-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-indigo-800/40">
+                  <div className="text-left sm:text-right">
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Inversión Adicional</span>
+                    <span className="text-2xl font-black text-white">$ 70.000 COP <span className="text-xs font-normal text-slate-300">/ mes</span></span>
+                    <p className="text-[11px] text-emerald-400 font-semibold mt-0.5">Comienza con 14 días gratis</p>
+                  </div>
+
+                  <Link
+                    to="/tienda-admin"
+                    className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2"
+                  >
+                    <span>Configurar y Activar Tienda</span>
+                    <span className="text-base">🚀</span>
+                  </Link>
+                </div>
+
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Intelligence & Finance */}
         {(canSeeAnalytics || canSeeFinances) && (

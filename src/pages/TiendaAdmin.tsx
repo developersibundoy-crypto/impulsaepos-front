@@ -3,6 +3,7 @@ import API from "../api/api";
 import { formatCOP } from "../utils/format";
 import { socket } from "../utils/socket";
 import { hasAccess } from "../utils/auth";
+import WompiCheckout from "../components/WompiCheckout";
 
 interface Tienda {
   id: number;
@@ -464,36 +465,87 @@ export default function TiendaAdmin() {
       </div>
 
       {/* Banner de Estado del Complemento (Prueba o Contrato) */}
+      {/* Banner de Estado del Complemento (Prueba, Suscripción y Renovación) */}
       {!vigente ? (
-        <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 p-6 sm:p-8 rounded-3xl shadow-xl border border-indigo-700/50 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-indigo-950 px-2.5 py-0.5 rounded-full">
-              Complemento E-Commerce
-            </span>
-            <h3 className="text-xl font-black tracking-tight">Activa tu catálogo online para recibir pedidos</h3>
-            <p className="text-indigo-200 text-sm max-w-xl">
-              Disfruta de 14 días completamente gratis para probar tu tienda en línea integrada con tu inventario sin costo adicional.
-            </p>
+        !contrato ? (
+          // Caso 1: Aún no ha iniciado la prueba gratuita
+          <div className="bg-gradient-to-r from-indigo-950 via-purple-950 to-slate-900 p-6 sm:p-8 rounded-3xl shadow-xl border border-indigo-500/40 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full">
+                  🎁 Prueba 100% Gratis
+                </span>
+                <span className="text-xs text-indigo-300 font-bold">$ 70.000 COP / mes luego</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight">Activa tu catálogo online y empieza a vender</h3>
+              <p className="text-indigo-200 text-xs sm:text-sm max-w-xl">
+                Disfruta de 14 días completamente gratis para probar tu tienda en línea integrada con tu inventario sin costo ni tarjetas requeridas.
+              </p>
+            </div>
+            {puedeAdministrar && (
+              <button
+                onClick={handleActivarPrueba}
+                className="px-6 py-3.5 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-xl transition-all transform hover:scale-105 whitespace-nowrap"
+              >
+                🎁 Activar Mis 14 Días Gratis
+              </button>
+            )}
           </div>
-          {puedeAdministrar && (
-            <button
-              onClick={handleActivarPrueba}
-              className="px-6 py-3 bg-amber-400 hover:bg-amber-300 text-indigo-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-transform hover:scale-105"
-            >
-              🎁 Activar 14 Días Gratis
-            </button>
-          )}
-        </div>
+        ) : (
+          // Caso 2: Prueba o suscripción vencida
+          <div className="bg-gradient-to-r from-red-950/80 via-slate-900 to-indigo-950 p-6 sm:p-8 rounded-3xl shadow-xl border border-red-500/40 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-widest bg-rose-500 text-white px-2.5 py-0.5 rounded-full">
+                ⚠️ Suscripción de Tienda Vencida
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight">Tu periodo de Tienda Online ha finalizado</h3>
+              <p className="text-slate-300 text-xs sm:text-sm max-w-xl">
+                Reactiva tu tienda para que tus clientes puedan seguir comprando las 24 horas. Suscripción mensual por solo <strong>$70.000 COP / mes</strong>.
+              </p>
+            </div>
+            {puedeAdministrar && (
+              <div className="flex flex-col items-center sm:items-end gap-1 flex-shrink-0">
+                <span className="text-xs text-emerald-400 font-bold">$ 70.000 COP / 30 días</span>
+                <WompiCheckout
+                  reference={`SUB_TIENDA_30_${localStorage.getItem('adminEmpresaId') || '1'}_${Date.now()}`}
+                  amountInCents={7000000}
+                />
+              </div>
+            )}
+          </div>
+        )
       ) : (
-        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex items-center justify-between text-xs text-emerald-900">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">✅</span>
-            <span>
-              <strong>Complemento Activo</strong> ({contrato?.origen === "prueba" ? "Prueba Gratuita" : "Suscripción"}). Vence en:{" "}
-              <strong>{contrato?.vence_en}</strong> ({contrato?.dias_restantes} días restantes).
-            </span>
+        // Caso 3: Complemento Activo / Vigente
+        <div className="space-y-3">
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs text-emerald-900 gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">✅</span>
+              <span>
+                <strong>Complemento Activo</strong> ({contrato?.origen === "prueba" ? "Prueba Gratuita" : "Suscripción"}). Vence en:{" "}
+                <strong>{contrato?.vence_en}</strong> ({contrato?.dias_restantes} días restantes).
+              </span>
+            </div>
+            <span className="font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-xl">1 Tienda Habilitada</span>
           </div>
-          <span className="font-bold text-emerald-700">1 Tienda Habilitada</span>
+
+          {/* Alerta de renovación próxima si quedan 5 días o menos */}
+          {contrato && contrato.dias_restantes <= 5 && puedeAdministrar && (
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs text-amber-950">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">⏱️</span>
+                <div>
+                  <p className="font-bold">Tu periodo está por vencer en {contrato.dias_restantes} días</p>
+                  <p className="text-amber-800 text-[11px]">Renueva ahora por 30 días más ($70.000 COP) para no interrumpir las ventas de tu web.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <WompiCheckout
+                  reference={`SUB_TIENDA_30_${localStorage.getItem('adminEmpresaId') || '1'}_${Date.now()}`}
+                  amountInCents={7000000}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
